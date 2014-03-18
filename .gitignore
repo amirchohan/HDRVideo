@@ -1,0 +1,5 @@
+*.exe
+*.o
+*.pyc
+linux/hdr
+test_images/output/

@@ -1,0 +1,18 @@
+Project TODO list:
+	add a property in the Image object to identify it's exposure
+
+
+Breakdown:
+	HDR from multiple images
+		Use existing algorithms to stitch together multiple LDR images into a single HDR image
+
+	Tone Mapping Algorithms
+		Once a HDR image is acheived, tone-map it
+
+	HDR from single image
+		Take a well-exposure LDR image and increase the contrast in it hence converting it to HDR
+
+
+	Make this work on a mobile phone
+
+	Create a pipeline for real-time HDR videos
