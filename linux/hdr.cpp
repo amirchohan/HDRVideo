@@ -11,25 +11,26 @@
 #include "HistEq.h"
 #include "GammaAdj.h"
 #include "Stitching.h"
-#include "ToneMap.h"
-
-#define METHOD_REFERENCE  (1<<1)
-#define METHOD_HALIDE_CPU (1<<2)
-#define METHOD_HALIDE_GPU (1<<3)
-#define METHOD_OPENCL     (1<<4)
+#include "Reinhard.h"
 
 using namespace hdr;
 using namespace std;
 
 struct _options_ {
 	map<string, Filter*> filters;
+	map<string, type> filter_types;
 	map<string, unsigned int> methods;
 
 	_options_() {
 		filters["histEq"] = new HistEq();
 		filters["gammaAdj"] = new GammaAdj();
+		filters["reinhard"] = new Reinhard();
 		filters["stitching"] = new Stitching();
-		filters["toneMap"] = new ToneMap();
+
+		filter_types["histEq"] = TONEMAP;
+		filter_types["gammaAdj"] = TONEMAP;
+		filter_types["reinhard"] = TONEMAP;
+		filter_types["stitching"] = STITCH;
 
 		methods["reference"] = METHOD_REFERENCE;
 		methods["opencl"] = METHOD_OPENCL;
@@ -50,18 +51,24 @@ bool is_dir(const char* path);
 bool hasEnding (string const &fullString, string const &ending);
 
 int main(int argc, char *argv[]) {
-	Filter *filter = NULL;
+	Filter *stitching_filter = NULL;
+	Filter *tonemap_filter = NULL;
 	Filter::Params params;
 	unsigned int method = 0;
 	string image_path;
 
 	// Parse arguments
 	for (int i = 1; i < argc; i++) {
-		if (!filter && Options.filters.find(argv[i]) != Options.filters.end()) {
-			filter = Options.filters[argv[i]];
+		if (!stitching_filter && (Options.filter_types[argv[i]] == STITCH) && 	//get the stitching filter
+				(Options.filters.find(argv[i]) != Options.filters.end())) {
+			stitching_filter = Options.filters[argv[i]];
+		}
+		else if (!tonemap_filter && (Options.filter_types[argv[i]] == TONEMAP) && 
+				(Options.filters.find(argv[i]) != Options.filters.end())) {		//tonemap filter
+			tonemap_filter = Options.filters[argv[i]];
 		}
 		else if (!method && Options.methods.find(argv[i]) != Options.methods.end()) {
-			method = Options.methods[argv[i]];
+			method = Options.methods[argv[i]];		//implementation method
 		}
 		else if (!strcmp(argv[i], "-cldevice")) {	//run on the given device
 			++i;
@@ -95,85 +102,76 @@ int main(int argc, char *argv[]) {
 			exit(0);
 		}
 	}
-	if (filter == NULL || method == 0) {	//invalid arguments
+	if (tonemap_filter == NULL || method == 0) {	//invalid arguments
 		printUsage();
 		exit(1);
 	}
 
-	if (image_path == "") {	//for case when no image is specified
-		image_path = "../test_images/lena-300x300.jpg";
-		if (!strcmp(filter->getName(), "Stitching"))
-			image_path = "../test_images/SampleLighthouse/";
-	}
-	int lastindex;
-	if (is_dir(image_path.c_str()))	lastindex = image_path.find_last_of("/");
-	else lastindex = image_path.find_last_of(".");
-	string output_name = image_path.substr(0, lastindex) + "_" + filter->getName() + ".jpg";
-
-
 	LDRI input;
-	if (is_dir(image_path.c_str())) {
-		DIR* dirp = opendir(image_path.c_str());
-		dirent* dp;
-		input.numImages = 0;
-		while ((dp = readdir(dirp)) != NULL) {	//get the number of images
-			if (hasEnding(dp->d_name, ".jpg")) input.numImages++;
-		}
-		input.images = (Image*) calloc(input.numImages, sizeof(Image));	//initialise memory for them
-		(void)closedir(dirp);
-
-		dirp = opendir(image_path.c_str());
-		int i = 0;
-		string path;
-		while ((dp = readdir(dirp)) != NULL) {
-			if (hasEnding(dp->d_name, ".jpg")) {
-				path = image_path + dp->d_name;
-				cout << path << endl;
-				input.images[i] = readJPG(path.c_str());
-				i++;
+	//if images need to be stitched first
+	if (stitching_filter) {
+		if (image_path == "") image_path = "../test_images/SampleLighthouse/";
+		if (is_dir(image_path.c_str())) {
+			DIR* dirp = opendir(image_path.c_str());
+			dirent* dp;
+			input.numImages = 0;
+			while ((dp = readdir(dirp)) != NULL) {	//get the number of images
+				if (hasEnding(dp->d_name, ".jpg")) input.numImages++;
 			}
+			input.images = (Image*) calloc(input.numImages, sizeof(Image));	//initialise memory for them
+			(void)closedir(dirp);
+
+			dirp = opendir(image_path.c_str());
+			int i = 0;
+			string path;
+			while ((dp = readdir(dirp)) != NULL) {
+				if (hasEnding(dp->d_name, ".jpg")) {
+					path = image_path + dp->d_name;
+					cout << path << endl;
+					input.images[i] = readJPG(path.c_str());
+					i++;
+				}
+			}
+			(void)closedir(dirp);
 		}
-		(void)closedir(dirp);
+		else {
+			printUsage();
+			exit(1);			
+		}
+		input.images[0].exposure = 0.025;
+		input.images[1].exposure = 0.1;
+		input.images[2].exposure = 0.33;
+
+		input.width = input.images[0].width;
+		input.height = input.images[0].height;
+
+		stitching_filter->setStatusCallback(updateStatus);
+		input.images[0] = stitching_filter->runFilter(input, params, method);
 	}
 	else {
-		input.numImages = 1;
 		input.images = (Image*) calloc(input.numImages, sizeof(Image));	//initialise memory for them
 		input.images[0] = readJPG(image_path.c_str());
 	}
+
+	input.numImages = 1;
 	input.width = input.images[0].width;
 	input.height = input.images[0].height;
 
-	input.images[0].exposure = 0.025;
-	input.images[1].exposure = 0.1;
-	input.images[2].exposure = 0.33;
-
-	// Allocate output images
-	Image output = {new float[input.width*input.height*3], input.width, input.height};
-	
 	// Run filter
-	filter->setStatusCallback(updateStatus);
-	switch (method)
-	{
-		case METHOD_REFERENCE:
-			filter->runReference(input, output);
-			break;
-		case METHOD_HALIDE_CPU:
-			filter->runHalideCPU(input, output, params);
-			break;
-		case METHOD_HALIDE_GPU:
-			filter->runHalideGPU(input, output, params);
-			break;
-		case METHOD_OPENCL:
-			filter->runOpenCL(input, output, params);
-			break;
-		default:
-			assert(false && "Invalid method.");
-	}
-
+	tonemap_filter->setStatusCallback(updateStatus);
+	Image output = tonemap_filter->runFilter(input, params, method);;
 
 	//Save the file
+	int lastindex;
+	if (is_dir(image_path.c_str()))	image_path = image_path.substr(0, image_path.find_last_of("/"));
+	else image_path = image_path.substr(0, image_path.find_last_of("."));
 
-	writeJPG(output, output_name.c_str());
+	string image_name = image_path.substr(image_path.find_last_of("/")+1, 100);
+	string output_path = "../output_images/" + image_name + "_";
+	if (stitching_filter) output_path = output_path + stitching_filter->getName() + "_";
+	output_path = output_path + tonemap_filter->getName() + ".jpg";
+
+	writeJPG(output, output_path.c_str());
 
 	return 0;
 }
@@ -217,13 +215,20 @@ void clinfo() {
 
 
 void printUsage() {
-	cout << endl << "Usage: hdr FILTER METHOD [-cldevice P:D] [-image PATH]";
+	cout << endl << "Usage: hdr [STITCHING] TONEMAP METHOD [-image PATH] [-cldevice P:D]";
 	cout << endl << "       hdr -clinfo" << endl;
 
-	cout << endl << "Where FILTER is one of:" << endl;
-	map<string, Filter*>::iterator fItr;
-	for (fItr = Options.filters.begin(); fItr != Options.filters.end(); fItr++) {
-		cout << "\t" << fItr->first << endl;
+	cout << endl << "Where STITCHING is one of:" << endl;
+	map<string, type>::iterator fItr;
+	for (fItr = Options.filter_types.begin(); fItr != Options.filter_types.end(); fItr++) {
+		if (fItr->second == STITCH)
+			cout << "\t" << fItr->first << endl;
+	}
+
+	cout << endl << "Where TONEMAP is one of:" << endl;
+	for (fItr = Options.filter_types.begin(); fItr != Options.filter_types.end(); fItr++) {
+		if (fItr->second == TONEMAP)
+			cout << "\t" << fItr->first << endl;
 	}
 
 	cout << endl << "Where METHOD is one of:" << endl;
@@ -233,8 +238,8 @@ void printUsage() {
 	}
 
 	cout << endl
-	<< "If the FILTER requires more than one image, " << endl
-	<< "then PATH should be the directory to the input images."
+	<< "If STITCHING is used then the image PATH, " << endl
+	<< "should be the directory to the input images."
 	<< endl;
 
 	cout << endl

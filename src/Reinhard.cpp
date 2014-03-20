@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <omp.h>
 
-#include "ToneMap.h"
-#include "opencl/toneMap.h"
+#include "Reinhard.h"
+//#include "opencl/toneMap.h"
 #if ENABLE_HALIDE
 #include "halide/blur_cpu.h"
 #include "halide/blur_gpu.h"
@@ -17,24 +17,25 @@ http://www.ceng.metu.edu.tr/~akyuz/files/hdrgpu.pdf
 
 using namespace hdr;
 
-ToneMap::ToneMap() : Filter() {
-	m_name = "ToneMap";
+Reinhard::Reinhard() : Filter() {
+	m_name = "Reinhard";
+	m_type = TONEMAP;
 }
 
-bool ToneMap::runHalideCPU(LDRI input, Image output, const Params& params) {
+bool Reinhard::runHalideCPU(LDRI input, Image output, const Params& params) {
 	return false;
 }
 
-bool ToneMap::runHalideGPU(LDRI input, Image output, const Params& params) {
+bool Reinhard::runHalideGPU(LDRI input, Image output, const Params& params) {
 	return false;
 }
 
-bool ToneMap::runOpenCL(LDRI input, Image output, const Params& params) {
+bool Reinhard::runOpenCL(LDRI input, Image output, const Params& params) {
 	return false;
 }
 
 
-bool ToneMap::runReference(LDRI input, Image output) {
+bool Reinhard::runReference(LDRI input, Image output) {
 
 	// Check for cached result
 	if (m_reference.data) {
@@ -43,7 +44,7 @@ bool ToneMap::runReference(LDRI input, Image output) {
 		return true;
 	}
 
-	reportStatus("Running reference");
+	reportStatus("\tRunning reference");
 
 	float* hdr_luminance = (float*) calloc(input.width * input.height, sizeof(float));
 
@@ -54,21 +55,14 @@ bool ToneMap::runReference(LDRI input, Image output) {
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 
-			float3 hdr_pixel;
+			float lum = getPixel(input.images[0], x, y, 3);
+			if (lum > Ywhite) Ywhite = lum;
 
-			hdr_pixel.x = getPixel(input.images[0], x, y, 0);
-			hdr_pixel.y = getPixel(input.images[0], x, y, 1);
-			hdr_pixel.z = getPixel(input.images[0], x, y, 2);
-			hdr_luminance[x + y*input.width] = getPixelLuminance(hdr_pixel);
-
-			if (hdr_luminance[x + y*input.width] > Ywhite)
-				Ywhite = hdr_luminance[x + y*input.width];
-
-			logAvgLum += log(hdr_luminance[x + y*input.width] + 0.000001);
+			logAvgLum += log(lum + 0.000001);
 		}
 	}
 
-	float key = 0.35f;
+	float key = 1.0f;
 	float sat = 1.5f;
 
 	logAvgLum = exp(logAvgLum/(input.width*input.height));
@@ -169,13 +163,13 @@ bool ToneMap::runReference(LDRI input, Image output) {
 
 
 
-	reportStatus("Finished reference");
+	reportStatus("\tFinished reference");
 
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new float[output.width*output.height*3];
-	memcpy(m_reference.data, output.data, output.width*output.height*3);
+	m_reference.data = new float[output.width*output.height*4];
+	memcpy(m_reference.data, output.data, output.width*output.height*4);
 
 	return true;
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-kernels="histEq gammaAdj stitching toneMap"
+kernels="histEq"
 
 for name in $kernels
 do

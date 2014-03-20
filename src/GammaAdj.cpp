@@ -4,7 +4,7 @@
 #include <omp.h>
 
 #include "GammaAdj.h"
-#include "opencl/gammaAdj.h"
+//#include "opencl/gammaAdj.h"
 #if ENABLE_HALIDE
 #include "halide/blur_cpu.h"
 #include "halide/blur_gpu.h"
@@ -19,6 +19,7 @@ using namespace hdr;
 
 GammaAdj::GammaAdj() : Filter() {
 	m_name = "GammaAdj";
+	m_type = TONEMAP;
 }
 
 bool GammaAdj::runHalideCPU(LDRI input, Image output, const Params& params) {

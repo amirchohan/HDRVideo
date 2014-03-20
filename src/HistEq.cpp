@@ -14,6 +14,7 @@ using namespace hdr;
 
 HistEq::HistEq() : Filter() {
 	m_name = "HistEq";
+	m_type = TONEMAP;
 }
 
 bool HistEq::runHalideCPU(LDRI input, Image output, const Params& params) {
@@ -146,7 +147,7 @@ bool HistEq::runReference(LDRI input, Image output) {
 	int brightness;
 	float red, green, blue;
 
-	reportStatus("Running reference");
+	reportStatus("\tRunning reference");
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 			red   = getPixel(input.images[0], x, y, 0)*255.f;
@@ -183,7 +184,7 @@ bool HistEq::runReference(LDRI input, Image output) {
 	}
 
 
-	reportStatus("Finished reference");
+	reportStatus("\tFinished reference");
 
 
 	// Cache result

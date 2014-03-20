@@ -19,7 +19,7 @@ LIBS = $(SDLIMGLIBd) $(JPGLIBd)
 CXX      = g++
 CXXFLAGS = -I$(SRCDIR) -O2 -fopenmp -DCL_USE_DEPRECATED_OPENCL_1_1_APIS
 LDFLAGS  = -lOpenCL -lpthread
-MODULES  = Filter HistEq GammaAdj Stitching ToneMap
+MODULES  = Filter Stitching HistEq GammaAdj Reinhard
 OBJECTS  = $(MODULES:%=$(OBJDIR)/%.o)
 SOURCES  = $(MODULES:%=$(SRCDIR)/%.cpp)
 DEPFILES = $(MODULES:%=$(OBJDIR)/%.d)

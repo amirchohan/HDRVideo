@@ -1,5 +1,6 @@
 *.exe
+*.d
 *.o
 *.pyc
 linux/hdr
-test_images/output/
+output/*

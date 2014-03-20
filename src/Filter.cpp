@@ -36,6 +36,10 @@ const char* Filter::getName() const {
 	return m_name;
 }
 
+const type Filter::getType() const {
+	return m_type;
+}
+
 bool Filter::initCL(const Params& params, const char *source, const char *options) {
 	// Ensure no existing context
 	releaseCL();
@@ -123,7 +127,7 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 
 bool Filter::verify(LDRI input, Image output, int tolerance) {
 	// Compute reference image
-	Image ref = {new float[output.width*output.height*3], output.width, output.height};
+	Image ref = {new float[output.width*output.height*4], output.width, output.height};
 	runReference(input, ref);
 
 
@@ -132,7 +136,7 @@ bool Filter::verify(LDRI input, Image output, int tolerance) {
 	const int maxErrors = 16;
 	for (int y = 0; y < output.height; y++) {
 		for (int x = 0; x < output.width; x++) {
-			for (int c = 0; c < 3; c++) {
+			for (int c = 0; c < 4; c++) {
 				int r = getPixel(ref, x, y, c);
 				int o = getPixel(output, x, y, c);
 				int diff = abs(r - o);
@@ -154,6 +158,33 @@ bool Filter::verify(LDRI input, Image output, int tolerance) {
 	return errors == 0;
 }
 
+Image Filter::runFilter(LDRI input, Params params, unsigned int method) {
+	Image output = {new float[input.width*input.height*4], input.width, input.height};
+
+	if (m_type == STITCH) std::cout << "Stitching using " << m_name << std::endl;
+	else std::cout << "Tonemapping using " << m_name << std::endl;
+
+	switch (method)
+	{
+		case METHOD_REFERENCE:
+			runReference(input, output);
+			break;
+		case METHOD_HALIDE_CPU:
+			runHalideCPU(input, output, params);
+			break;
+		case METHOD_HALIDE_GPU:
+			runHalideGPU(input, output, params);
+			break;
+		case METHOD_OPENCL:
+			runOpenCL(input, output, params);
+			break;
+		default:
+			assert(false && "Invalid method.");
+	}
+	return output;
+}
+
+
 /////////////////
 // Image utils //
 /////////////////
@@ -168,7 +199,7 @@ float clamp(float x, float min, float max) {
 
 buffer_t createHalideBuffer(Image &image) {
 	buffer_t buffer = {0};
-	buffer.host = toChar(image);
+	buffer.host = image.data;
 	buffer.extent[0] = image.width;
 	buffer.extent[1] = image.height;
 	buffer.extent[2] = 4;
@@ -182,13 +213,13 @@ buffer_t createHalideBuffer(Image &image) {
 float getPixel(Image &image, int x, int y, int c) {
 	int _x = clamp(x, 0, image.width-1);
 	int _y = clamp(y, 0, image.height-1);
-	return image.data[(_x + _y*image.width)*3 + c];
+	return image.data[(_x + _y*image.width)*4 + c];
 }
 
 void setPixel(Image &image, int x, int y, int c, float value) {
 	int _x = clamp(x, 0, image.width-1);
 	int _y = clamp(y, 0, image.height-1);
-	image.data[(_x + _y*image.width)*3 + c] = clamp(value, 0.f, 1.f);
+	image.data[(_x + _y*image.width)*4 + c] = clamp(value, 0.f, 1.f);
 }
 
 float getPixelLuminance(float3 pixel_val) {
@@ -302,9 +333,14 @@ Image readJPG(const char* filePath) {
 	if (!input)   throw std::runtime_error("Problem opening input file");
  
  	uchar* udata = (uchar*) input->pixels;
-  	float* data = (float*) calloc(3*(input->w * input->h), sizeof(float));
- 	for (int i=0; i < 3*(input->w)*(input->h); i++) {
- 		data[i] = ((float)udata[i])/255.f;
+  	float* data = (float*) calloc(4*(input->w * input->h), sizeof(float));
+
+	for (int y = 0; y < input->h; y++) {
+		for (int x = 0; x < input->w; x++) {
+			for (int j=0; j<3; j++) {
+ 		 		data[(x + y*input->w)*4 + j] = ((float)udata[(x + y*input->w)*3 + j])/255.f;
+ 		 	}
+ 		 }
  	}
 
  	Image image = {data, input->w, input->h};
@@ -343,7 +379,13 @@ void writeJPG(Image &img, const char* filePath) {
 	jpeg_set_quality (&cinfo, 75, true);
 	jpeg_start_compress(&cinfo, true);
 
-	uchar* charImageData = toChar(img);
+	uchar* charImageData = (uchar*) calloc(3*img.width*img.height, sizeof(uchar));
+	for (int y = 0; y < img.height; y++) {
+		for (int x = 0; x < img.width; x++) {
+			for (int i=0; i < 3; i++)
+				charImageData[(x + y*img.width)*3 + i] = getPixel(img, x, y, i)*255.f;
+		}
+	}
 
 	JSAMPROW row_pointer;          /* pointer to a single row */
  	while (cinfo.next_scanline < cinfo.image_height) {
@@ -358,16 +400,6 @@ float weight(float luminance) {
 	else return (1.0 - luminance)*2.0;
 }
 
-uchar* toChar(Image &image) {
-	uchar* charImageData = (uchar*) calloc(3*image.width*image.height, sizeof(uchar));
-	for (int y = 0; y < image.height; y++) {
-		for (int x = 0; x < image.width; x++) {
-			for (int i=0; i < 3; i++)
-				charImageData[(x + y*image.width)*3 + i] = getPixel(image, x, y, i)*255.f;
-		}
-	}
-	return charImageData;
-}
 
 //////////////////
 // Timing utils //

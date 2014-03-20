@@ -1,5 +1,6 @@
 Project TODO list:
-	add a property in the Image object to identify it's exposure
+	Create a Stitching class containing different methods of stitching
+	Similarly create a ToneMap class
 
 
 Breakdown:

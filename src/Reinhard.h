@@ -2,9 +2,9 @@
 
 namespace hdr
 {
-class ToneMap : public Filter {
+class Reinhard : public Filter {
 public:
-	ToneMap();
+	Reinhard();
 
 	virtual bool runHalideCPU(LDRI input, Image output, const Params& params);
 	virtual bool runHalideGPU(LDRI input, Image output, const Params& params);
