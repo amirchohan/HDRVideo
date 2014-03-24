@@ -1,10 +1,11 @@
 #include <string.h>
+#include <iostream>
 #include <cstdio>
 #include <algorithm>
 #include <omp.h>
 
 #include "Reinhard.h"
-//#include "opencl/toneMap.h"
+#include "opencl/reinhard.h"
 #if ENABLE_HALIDE
 #include "halide/blur_cpu.h"
 #include "halide/blur_gpu.h"
@@ -31,7 +32,127 @@ bool Reinhard::runHalideGPU(LDRI input, Image output, const Params& params) {
 }
 
 bool Reinhard::runOpenCL(LDRI input, Image output, const Params& params) {
-	return false;
+
+	char flags[1024];
+	sprintf(flags, "-cl-fast-relaxed-math -Dimage_size=%lu\n", input.width*input.height);
+
+	if (!initCL(params, reinhard_kernel, flags)) {
+		return false;
+	}
+
+
+	cl_int err;
+	cl_kernel k_computeLogAvgLum, k_globalTMO;
+	cl_mem mem_input, mem_output, mem_logAvgLum, mem_Ywhite;
+
+	//set up kernels
+	k_computeLogAvgLum = clCreateKernel(m_program, "computeLogAvgLum", &err);
+	CHECK_ERROR_OCL(err, "creating computeLogAvgLum kernel", return false);
+
+	k_globalTMO = clCreateKernel(m_program, "global_TMO", &err);
+	CHECK_ERROR_OCL(err, "creating global_TMO kernel", return false);
+
+	//get info to set the global_reduc and local_reduc according to the GPU specs
+	size_t preferred_wg_size;	//workgroup size should be a multiple of this
+	err = clGetKernelWorkGroupInfo (k_computeLogAvgLum, m_device,
+		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &preferred_wg_size, NULL);
+	CHECK_ERROR_OCL(err, "getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE", return false);
+
+	size_t max_cu;	//max compute units
+	err = clGetDeviceInfo(m_device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(size_t), &max_cu, NULL);
+
+	const size_t local_reduc = preferred_wg_size;	//workgroup size for reduction kernels
+	const size_t global_reduc = ((int)preferred_wg_size)*((int)max_cu);	//global_reduc size for reduction kernels
+	const int num_wg = global_reduc/local_reduc;
+
+	const size_t local = preferred_wg_size;	//workgroup size for normal kernels
+	const size_t global = ceil((float)input.width*input.height/(float)local) * local;
+
+	//memory objects
+	mem_input = clCreateBuffer(m_context, CL_MEM_READ_ONLY, 
+		sizeof(float)*input.width*input.height*4, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating image memory", return false);
+
+	mem_output = clCreateBuffer(m_context, CL_MEM_READ_WRITE, 
+		sizeof(float)*output.width*output.height*4, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating image memory", return false);
+
+	mem_logAvgLum = clCreateBuffer(m_context, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating logAvgLum memory", return false);
+
+	mem_Ywhite = clCreateBuffer(m_context, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating Ywhite memory", return false);
+
+	err  = clSetKernelArg(k_computeLogAvgLum, 0, sizeof(cl_mem), &mem_input);
+	err  = clSetKernelArg(k_computeLogAvgLum, 1, sizeof(cl_mem), &mem_logAvgLum);
+	err  = clSetKernelArg(k_computeLogAvgLum, 2, sizeof(cl_mem), &mem_Ywhite);
+	CHECK_ERROR_OCL(err, "setting computeLogAvgLum arguments", return false);
+
+	err  = clSetKernelArg(k_globalTMO, 0, sizeof(cl_mem), &mem_input);
+	err  = clSetKernelArg(k_globalTMO, 1, sizeof(cl_mem), &mem_output);
+	err  = clSetKernelArg(k_globalTMO, 2, sizeof(cl_mem), &mem_logAvgLum);
+	err  = clSetKernelArg(k_globalTMO, 3, sizeof(cl_mem), &mem_Ywhite);
+	CHECK_ERROR_OCL(err, "setting globalTMO arguments", return false);
+
+	err = clEnqueueWriteBuffer(m_queue, mem_input, CL_TRUE, 0, 
+		sizeof(float)*input.width*input.height*4, input.images[0].data, 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "writing image memory", return false);
+
+
+
+	//let it begin
+	double start = omp_get_wtime();
+
+	err = clEnqueueNDRangeKernel(m_queue, k_computeLogAvgLum, 1, NULL, &global_reduc, &local_reduc, 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "enqueuing computeLogAvgLum kernel", return false);
+
+	err = clEnqueueNDRangeKernel(m_queue, k_globalTMO, 1, NULL, &global, &local, 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "enqueuing globalTMO kernel", return false);
+
+	err = clFinish(m_queue);
+	CHECK_ERROR_OCL(err, "running kernels", return false);
+	double runTime = omp_get_wtime() - start;
+
+
+	//read results back
+	err = clEnqueueReadBuffer(m_queue, mem_output, CL_TRUE, 0,
+		sizeof(float)*output.width*output.height*4, output.data, 0, NULL, NULL );
+	CHECK_ERROR_OCL(err, "reading image memory", return false);
+
+//	float* logAvgLum = (float*) calloc(num_wg, sizeof(float));
+//	err = clEnqueueReadBuffer(m_queue, mem_logAvgLum, CL_TRUE, 0, sizeof(float)*num_wg, logAvgLum, 0, NULL, NULL );
+//	CHECK_ERROR_OCL(err, "reading image memory", return false);
+//
+//	float* Ywhite = (float*) calloc(num_wg, sizeof(float));
+//	err = clEnqueueReadBuffer(m_queue, mem_Ywhite, CL_TRUE, 0, sizeof(float)*num_wg, Ywhite, 0, NULL, NULL );
+//	CHECK_ERROR_OCL(err, "reading image memory", return false);
+
+//	printf("%f\n", logAvgLum[0]+logAvgLum[1]+logAvgLum[2]+logAvgLum[3]+logAvgLum[4]+logAvgLum[5]);
+//
+//	float Ywhite_max = 0;
+//	for (int i=0; i<6; i++) {
+//		if (Ywhite_max < Ywhite[i]) Ywhite_max = Ywhite[i];
+//	}
+//
+//	printf("%f\n", Ywhite_max);
+
+	reportStatus("Finished OpenCL kernel");
+
+	bool passed = verify(input, output);
+	reportStatus(
+		"Finished in %lf ms (verification %s)",
+		runTime*1000, passed ? "passed" : "failed");
+
+
+	//cleanup
+	clReleaseMemObject(mem_input);
+	clReleaseMemObject(mem_output);
+	clReleaseMemObject(mem_Ywhite);
+	clReleaseMemObject(mem_logAvgLum);
+	clReleaseKernel(k_globalTMO);
+	clReleaseKernel(k_computeLogAvgLum);
+	releaseCL();
+	return passed;
 }
 
 
@@ -44,18 +165,18 @@ bool Reinhard::runReference(LDRI input, Image output) {
 		return true;
 	}
 
-	reportStatus("\tRunning reference");
-
-	float* hdr_luminance = (float*) calloc(input.width * input.height, sizeof(float));
+	reportStatus("Running reference");
 
 	float logAvgLum = 0;
-	float3 hdr, ldr;
 	float Ywhite = 0.f;
 
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 
-			float lum = getPixel(input.images[0], x, y, 3);
+			float3 hdr = {getPixel(input.images[0], x, y, 0),
+				getPixel(input.images[0], x, y, 1), getPixel(input.images[0], x, y, 2)};
+
+			float lum = getPixelLuminance(hdr);
 			if (lum > Ywhite) Ywhite = lum;
 
 			logAvgLum += log(lum + 0.000001);
@@ -67,7 +188,7 @@ bool Reinhard::runReference(LDRI input, Image output) {
 
 	logAvgLum = exp(logAvgLum/(input.width*input.height));
 
-	//global Tone-mapping operator
+	//global_reduc Tone-mapping operator
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 			float3 rgb, xyz;
@@ -163,7 +284,7 @@ bool Reinhard::runReference(LDRI input, Image output) {
 
 
 
-	reportStatus("\tFinished reference");
+	reportStatus("Finished reference");
 
 	// Cache result
 	m_reference.width = output.width;

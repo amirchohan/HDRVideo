@@ -125,7 +125,7 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 	m_statusCallback = callback;
 }
 
-bool Filter::verify(LDRI input, Image output, int tolerance) {
+bool Filter::verify(LDRI input, Image output, float tolerance) {
 	// Compute reference image
 	Image ref = {new float[output.width*output.height*4], output.width, output.height};
 	runReference(input, ref);
@@ -137,14 +137,14 @@ bool Filter::verify(LDRI input, Image output, int tolerance) {
 	for (int y = 0; y < output.height; y++) {
 		for (int x = 0; x < output.width; x++) {
 			for (int c = 0; c < 4; c++) {
-				int r = getPixel(ref, x, y, c);
-				int o = getPixel(output, x, y, c);
-				int diff = abs(r - o);
+				float r = getPixel(ref, x, y, c);
+				float o = getPixel(output, x, y, c);
+				float diff = abs(r - o);
 
 				if (diff > tolerance) {
 					// Only report first few errors
 					if (errors < maxErrors) {
-						reportStatus("Mismatch at (%d,%d,%d): %d vs %d", x, y, c, r, o);
+						reportStatus("Mismatch at (%d,%d,%d): %f vs %f", x, y, c, r, o);
 					}
 					if (++errors == maxErrors) {
 						reportStatus("Supressing further errors");
@@ -161,8 +161,8 @@ bool Filter::verify(LDRI input, Image output, int tolerance) {
 Image Filter::runFilter(LDRI input, Params params, unsigned int method) {
 	Image output = {new float[input.width*input.height*4], input.width, input.height};
 
-	if (m_type == STITCH) std::cout << "Stitching using " << m_name << std::endl;
-	else std::cout << "Tonemapping using " << m_name << std::endl;
+	if (m_type == STITCH) std::cout << "--------------------------------Stitching using " << m_name << std::endl;
+	else std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
 
 	switch (method)
 	{
@@ -340,6 +340,7 @@ Image readJPG(const char* filePath) {
 			for (int j=0; j<3; j++) {
  		 		data[(x + y*input->w)*4 + j] = ((float)udata[(x + y*input->w)*3 + j])/255.f;
  		 	}
+ 		 	data[(x + y*input->w)*4 + 3] = 0.f;
  		 }
  	}
 

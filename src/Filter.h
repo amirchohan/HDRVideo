@@ -96,7 +96,7 @@ protected:
 	Image m_reference;
 	int (*m_statusCallback)(const char*, va_list args);
 	void reportStatus(const char *format, ...) const;
-	virtual bool verify(LDRI input, Image output, int tolerance=1);
+	virtual bool verify(LDRI input, Image output, float tolerance=(1/255.f));
 
 	cl_device_id m_device;
 	cl_context m_context;

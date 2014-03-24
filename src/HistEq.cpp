@@ -109,7 +109,7 @@ bool HistEq::runOpenCL(LDRI input, Image output, const Params& params) {
 	CHECK_ERROR_OCL(err, "enqueuing modify_histEq kernel", return false);
 
 	err = clFinish(m_queue);
-	CHECK_ERROR_OCL(err, "running kernel", return false);
+	CHECK_ERROR_OCL(err, "running kernels", return false);
 	double runTime = omp_get_wtime() - start;
 
 	err = clEnqueueReadBuffer(m_queue, mem_image,
@@ -132,7 +132,7 @@ bool HistEq::runOpenCL(LDRI input, Image output, const Params& params) {
 	clReleaseKernel(k_cdf);
 	clReleaseKernel(k_mod_bright);
 	releaseCL();
-	return true;
+	return passed;
 }
 
 bool HistEq::runReference(LDRI input, Image output) {

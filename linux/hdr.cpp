@@ -149,7 +149,8 @@ int main(int argc, char *argv[]) {
 		input.images[0] = stitching_filter->runFilter(input, params, method);
 	}
 	else {
-		input.images = (Image*) calloc(input.numImages, sizeof(Image));	//initialise memory for them
+		if (image_path == "") image_path = "../test_images/lena-300x300.jpg";
+		input.images = (Image*) calloc(1, sizeof(Image));	//initialise memory for them
 		input.images[0] = readJPG(image_path.c_str());
 	}
 
@@ -159,7 +160,7 @@ int main(int argc, char *argv[]) {
 
 	// Run filter
 	tonemap_filter->setStatusCallback(updateStatus);
-	Image output = tonemap_filter->runFilter(input, params, method);;
+	Image output = tonemap_filter->runFilter(input, params, method);
 
 	//Save the file
 	int lastindex;
