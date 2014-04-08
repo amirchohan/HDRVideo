@@ -1,19 +1,17 @@
 Project TODO list:
-	Create a Stitching class containing different methods of stitching
-	Similarly create a ToneMap class
+	IO options:
+		Input:
+			- stored medium
+			- webcam
+		Output:
+			- store on drive
+			- display
 
 
-Breakdown:
-	HDR from multiple images
-		Use existing algorithms to stitch together multiple LDR images into a single HDR image
+	Get single image working on the mobile phone
 
-	Tone Mapping Algorithms
-		Once a HDR image is acheived, tone-map it
+	Create a pipeline for real-time HDR videos	
+	
+	Implement the paper Dan Curran is using
 
-	HDR from single image
-		Take a well-exposure LDR image and increase the contrast in it hence converting it to HDR
-
-
-	Make this work on a mobile phone
-
-	Create a pipeline for real-time HDR videos
+	Provide option of stitching again

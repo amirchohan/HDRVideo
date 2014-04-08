@@ -4,21 +4,17 @@ OBJDIR=obj
 
 SUFFIXES += .d
 
-SDLIMGDIR = /usr/lib/x86_64-linux-gnu/
-SDLIMGINC = -I/usr/include/SDL/
-SDLIMGLIBd = -L$(SDLIMGDIR) -lSDL_image
-
-JPGDIR = /usr/include/x86_64-linux-gnu/
 JPGINC = -I/usr/include/
+JPGDIR = /usr/include/x86_64-linux-gnu/
 JPGLIBd = -L$(JPGDIR) -ljpeg
 
-INCS = $(SDLIMGINC) $(JPGINC)
-LIBS = $(SDLIMGLIBd) $(JPGLIBd)
+INCS = $(JPGINC)
+LIBS = $(JPGLIBd)
 
 
 CXX      = g++
 CXXFLAGS = -I$(SRCDIR) -O2 -fopenmp -DCL_USE_DEPRECATED_OPENCL_1_1_APIS
-LDFLAGS  = -lOpenCL -lpthread -lglut -lGL -lGLEW -lGLU
+LDFLAGS  = -lOpenCL -lSDL2 -lSDL2_image -lpthread -lglut -lGL -lGLEW -lGLU
 MODULES  = Filter HistEq GammaAdj Reinhard
 OBJECTS  = $(MODULES:%=$(OBJDIR)/%.o)
 SOURCES  = $(MODULES:%=$(SRCDIR)/%.cpp)

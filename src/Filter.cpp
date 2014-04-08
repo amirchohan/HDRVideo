@@ -5,8 +5,6 @@
 #include <exception>
 #include <stdexcept>
 
-#include "SDL.h"
-#include "SDL_image.h"
 #include "jpeglib.h"
 
 #include "Filter.h"
@@ -15,7 +13,7 @@ namespace hdr
 {
 Filter::Filter() {
 	m_statusCallback = NULL;
-	m_context = 0;
+	m_clContext = 0;
 	m_queue = 0;
 	m_program = 0;
 	m_reference.data = NULL;
@@ -68,13 +66,28 @@ bool Filter::initCL(const Params& params, const char *source, const char *option
 	clGetDeviceInfo(m_device, CL_DEVICE_NAME, 64, name, NULL);
 	reportStatus("Using device: %s", name);
 
-	m_context = clCreateContext(NULL, 1, &m_device, NULL, NULL, &err);
+	// Initialize SDL2
+	SDL_Init(SDL_INIT_VIDEO);
+	// Window mode MUST include SDL_WINDOW_OPENGL for use with OpenGL.
+	SDL_Window *window = SDL_CreateWindow( "SDL2/OpenGL Demo", 0, 0, 640, 480, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
+	// Create an OpenGL context associated with the window.
+	m_glContext = SDL_GL_CreateContext(window);
+
+	// Create CL context properties, add GLX context & handle to DC 
+	cl_context_properties properties[] = { 
+		CL_GL_CONTEXT_KHR, (cl_context_properties)glXGetCurrentContext(), // GLX Context 
+		CL_GLX_DISPLAY_KHR, (cl_context_properties)glXGetCurrentDisplay(), // GLX Display
+		CL_CONTEXT_PLATFORM, (cl_context_properties)platform, // OpenCL platform
+		0 
+	};
+
+	m_clContext = clCreateContext(properties, 1, &m_device, NULL, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating context", return false);
 
-	m_queue = clCreateCommandQueue(m_context, m_device, 0, &err);
+	m_queue = clCreateCommandQueue(m_clContext, m_device, 0, &err);
 	CHECK_ERROR_OCL(err, "creating command queue", return false);
 
-	m_program = clCreateProgramWithSource(m_context, 1, &source, NULL, &err);
+	m_program = clCreateProgramWithSource(m_clContext, 1, &source, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating program", return false);
 
 	err = clBuildProgram(m_program, 1, &m_device, options, NULL, NULL);
@@ -103,9 +116,13 @@ void Filter::releaseCL() {
 		clReleaseCommandQueue(m_queue);
 		m_queue = 0;
 	}
-	if (m_context) {
-		clReleaseContext(m_context);
-		m_context = 0;
+	if (m_clContext) {
+		clReleaseContext(m_clContext);
+		m_clContext = 0;
+	}
+	if (m_glContext) {
+		SDL_GL_DeleteContext(m_glContext);
+		m_glContext = 0;
 	}
 }
 
@@ -124,9 +141,8 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 
 bool Filter::verify(Image input, Image output, float tolerance) {
 	// Compute reference image
-	Image ref = {new float[output.width*output.height*4], output.width, output.height};
+	Image ref = {(float*) calloc(output.width*output.height*4, sizeof(float)), output.width, output.height};
 	runReference(input, ref);
-
 
 	// Compare pixels
 	int errors = 0;
@@ -156,7 +172,7 @@ bool Filter::verify(Image input, Image output, float tolerance) {
 }
 
 Image Filter::runFilter(Image input, Params params, unsigned int method) {
-	Image output = {new float[input.width*input.height*4], input.width, input.height};
+	Image output = {(float*) calloc(input.width*input.height*4, sizeof(float)), input.width, input.height};
 
 	std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
 
@@ -325,8 +341,8 @@ float3 XYZtoRGB(float3 xyz) {
 
 
 Image readJPG(const char* filePath) {
-	SDL_Surface *input    = IMG_Load(filePath);
-	if (!input)   throw std::runtime_error("Problem opening input file");
+	SDL_Surface *input = IMG_Load(filePath);
+	if (!input) throw std::runtime_error("Problem opening input file");
  
  	uchar* udata = (uchar*) input->pixels;
   	float* data = (float*) calloc(4*(input->w * input->h), sizeof(float));

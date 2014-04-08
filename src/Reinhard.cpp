@@ -67,18 +67,18 @@ bool Reinhard::runOpenCL(Image input, Image output, const Params& params) {
 	const size_t global = ceil((float)input.width*input.height/(float)local) * local;
 
 	//memory objects
-	mem_input = clCreateBuffer(m_context, CL_MEM_READ_ONLY, 
+	mem_input = clCreateBuffer(m_clContext, CL_MEM_READ_ONLY, 
 		sizeof(float)*input.width*input.height*4, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
-	mem_output = clCreateBuffer(m_context, CL_MEM_READ_WRITE, 
+	mem_output = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, 
 		sizeof(float)*output.width*output.height*4, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
-	mem_logAvgLum = clCreateBuffer(m_context, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
+	mem_logAvgLum = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating logAvgLum memory", return false);
 
-	mem_Ywhite = clCreateBuffer(m_context, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
+	mem_Ywhite = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating Ywhite memory", return false);
 
 	err  = clSetKernelArg(k_computeLogAvgLum, 0, sizeof(cl_mem), &mem_input);

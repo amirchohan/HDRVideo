@@ -42,15 +42,15 @@ bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
 	cl_mem mem_image, mem_partial_hist, mem_hist;
 
 	//memory objects
-	mem_image = clCreateBuffer(	m_context, CL_MEM_READ_WRITE, 
+	mem_image = clCreateBuffer(	m_clContext, CL_MEM_READ_WRITE, 
 		sizeof(float)*input.width*input.height*3, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
-	mem_partial_hist = clCreateBuffer(m_context, CL_MEM_READ_WRITE, 
+	mem_partial_hist = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, 
 		sizeof(unsigned int)*256*cdf_global, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 
-	mem_hist = clCreateBuffer(m_context, CL_MEM_READ_WRITE, 
+	mem_hist = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, 
 		sizeof(unsigned int)*256, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 

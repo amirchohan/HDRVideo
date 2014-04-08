@@ -5,6 +5,13 @@
 #include <math.h>
 #include <stdarg.h>
 
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_opengl.h>
+#include <CL/cl_gl.h>
+#include <GL/glx.h>
+
+
 #define METHOD_REFERENCE  (1<<1)
 #define METHOD_HALIDE_CPU (1<<2)
 #define METHOD_HALIDE_GPU (1<<3)
@@ -42,7 +49,6 @@ typedef unsigned char uchar;
 typedef struct {
 	float* data;
 	size_t width, height;
-	float exposure;
 } Image;
 
 typedef struct {
@@ -86,9 +92,10 @@ protected:
 	virtual bool verify(Image input, Image output, float tolerance=(1/255.f));
 
 	cl_device_id m_device;
-	cl_context m_context;
+	cl_context m_clContext;
 	cl_command_queue m_queue;
 	cl_program m_program;
+	SDL_GLContext m_glContext;
 	bool initCL(const Params& params, const char *source, const char *options);
 	void releaseCL();
 };
