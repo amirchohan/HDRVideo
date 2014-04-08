@@ -1,6 +1,6 @@
 #!/bin/bash
 
-kernels="histEq reinhard stitching"
+kernels="histEq reinhard"
 
 for name in $kernels
 do

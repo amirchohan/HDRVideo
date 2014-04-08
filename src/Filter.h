@@ -39,22 +39,11 @@ namespace hdr
 {
 typedef unsigned char uchar;
 
-enum type {
-	STITCH,
-	TONEMAP
-};
-
 typedef struct {
 	float* data;
 	size_t width, height;
 	float exposure;
 } Image;
-
-typedef struct {
-	int numImages;
-	Image* images;
-	size_t width, height;
-} LDRI;
 
 typedef struct {
 	float x;
@@ -80,23 +69,21 @@ public:
 
 	virtual void clearReferenceCache();
 	virtual const char* getName() const;
-	virtual const type getType() const;
 
-	virtual bool runHalideCPU(LDRI input, Image output, const Params& params) = 0;
-	virtual bool runHalideGPU(LDRI input, Image output, const Params& params) = 0;
-	virtual bool runOpenCL(LDRI input, Image output, const Params& params) = 0;
-	virtual bool runReference(LDRI input, Image output) = 0;
-	virtual Image runFilter(LDRI input, Params params, unsigned int method);
+	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
+	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
+	virtual bool runOpenCL(Image input, Image output, const Params& params) = 0;
+	virtual bool runReference(Image input, Image output) = 0;
+	virtual Image runFilter(Image input, Params params, unsigned int method);
 
 	virtual void setStatusCallback(int (*callback)(const char*, va_list args));
 
 protected:
 	const char *m_name;
-	type m_type;
 	Image m_reference;
 	int (*m_statusCallback)(const char*, va_list args);
 	void reportStatus(const char *format, ...) const;
-	virtual bool verify(LDRI input, Image output, float tolerance=(1/255.f));
+	virtual bool verify(Image input, Image output, float tolerance=(1/255.f));
 
 	cl_device_id m_device;
 	cl_context m_context;

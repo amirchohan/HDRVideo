@@ -20,18 +20,17 @@ using namespace hdr;
 
 Reinhard::Reinhard() : Filter() {
 	m_name = "Reinhard";
-	m_type = TONEMAP;
 }
 
-bool Reinhard::runHalideCPU(LDRI input, Image output, const Params& params) {
+bool Reinhard::runHalideCPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool Reinhard::runHalideGPU(LDRI input, Image output, const Params& params) {
+bool Reinhard::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool Reinhard::runOpenCL(LDRI input, Image output, const Params& params) {
+bool Reinhard::runOpenCL(Image input, Image output, const Params& params) {
 
 	char flags[1024];
 	sprintf(flags, "-cl-fast-relaxed-math -Dimage_size=%lu\n", input.width*input.height);
@@ -39,7 +38,6 @@ bool Reinhard::runOpenCL(LDRI input, Image output, const Params& params) {
 	if (!initCL(params, reinhard_kernel, flags)) {
 		return false;
 	}
-
 
 	cl_int err;
 	cl_kernel k_computeLogAvgLum, k_globalTMO;
@@ -95,7 +93,7 @@ bool Reinhard::runOpenCL(LDRI input, Image output, const Params& params) {
 	CHECK_ERROR_OCL(err, "setting globalTMO arguments", return false);
 
 	err = clEnqueueWriteBuffer(m_queue, mem_input, CL_TRUE, 0, 
-		sizeof(float)*input.width*input.height*4, input.images[0].data, 0, NULL, NULL);
+		sizeof(float)*input.width*input.height*4, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
 
@@ -156,7 +154,7 @@ bool Reinhard::runOpenCL(LDRI input, Image output, const Params& params) {
 }
 
 
-bool Reinhard::runReference(LDRI input, Image output) {
+bool Reinhard::runReference(Image input, Image output) {
 
 	// Check for cached result
 	if (m_reference.data) {
@@ -173,8 +171,8 @@ bool Reinhard::runReference(LDRI input, Image output) {
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 
-			float3 hdr = {getPixel(input.images[0], x, y, 0),
-				getPixel(input.images[0], x, y, 1), getPixel(input.images[0], x, y, 2)};
+			float3 hdr = {getPixel(input, x, y, 0),
+				getPixel(input, x, y, 1), getPixel(input, x, y, 2)};
 
 			float lum = getPixelLuminance(hdr);
 			if (lum > Ywhite) Ywhite = lum;
@@ -192,9 +190,9 @@ bool Reinhard::runReference(LDRI input, Image output) {
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 			float3 rgb, xyz;
-			rgb.x = getPixel(input.images[0], x, y, 0);
-			rgb.y = getPixel(input.images[0], x, y, 1);
-			rgb.z = getPixel(input.images[0], x, y, 2);
+			rgb.x = getPixel(input, x, y, 0);
+			rgb.y = getPixel(input, x, y, 1);
+			rgb.z = getPixel(input, x, y, 2);
 
 			xyz = RGBtoXYZ(rgb);
 

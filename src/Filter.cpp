@@ -36,9 +36,6 @@ const char* Filter::getName() const {
 	return m_name;
 }
 
-const type Filter::getType() const {
-	return m_type;
-}
 
 bool Filter::initCL(const Params& params, const char *source, const char *options) {
 	// Ensure no existing context
@@ -125,7 +122,7 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 	m_statusCallback = callback;
 }
 
-bool Filter::verify(LDRI input, Image output, float tolerance) {
+bool Filter::verify(Image input, Image output, float tolerance) {
 	// Compute reference image
 	Image ref = {new float[output.width*output.height*4], output.width, output.height};
 	runReference(input, ref);
@@ -158,11 +155,10 @@ bool Filter::verify(LDRI input, Image output, float tolerance) {
 	return errors == 0;
 }
 
-Image Filter::runFilter(LDRI input, Params params, unsigned int method) {
+Image Filter::runFilter(Image input, Params params, unsigned int method) {
 	Image output = {new float[input.width*input.height*4], input.width, input.height};
 
-	if (m_type == STITCH) std::cout << "--------------------------------Stitching using " << m_name << std::endl;
-	else std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
+	std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
 
 	switch (method)
 	{

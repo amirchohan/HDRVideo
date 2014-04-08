@@ -6,9 +6,9 @@ class HistEq : public Filter {
 public:
 	HistEq();
 
-	virtual bool runHalideCPU(LDRI input, Image output, const Params& params);
-	virtual bool runHalideGPU(LDRI input, Image output, const Params& params);
-	virtual bool runOpenCL(LDRI input, Image output, const Params& params);
-	virtual bool runReference(LDRI input, Image output);
+	virtual bool runHalideCPU(Image input, Image output, const Params& params);
+	virtual bool runHalideGPU(Image input, Image output, const Params& params);
+	virtual bool runOpenCL(Image input, Image output, const Params& params);
+	virtual bool runReference(Image input, Image output);
 };
 }

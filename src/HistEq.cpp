@@ -14,18 +14,17 @@ using namespace hdr;
 
 HistEq::HistEq() : Filter() {
 	m_name = "HistEq";
-	m_type = TONEMAP;
 }
 
-bool HistEq::runHalideCPU(LDRI input, Image output, const Params& params) {
+bool HistEq::runHalideCPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool HistEq::runHalideGPU(LDRI input, Image output, const Params& params) {
+bool HistEq::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool HistEq::runOpenCL(LDRI input, Image output, const Params& params) {
+bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
 	const size_t local = 1000;
 	const size_t global = ceil((float)input.width*input.height/(float)local) * local;
 	const size_t cdf_global = 256;	//global size for the k_cdf kernel
@@ -56,7 +55,7 @@ bool HistEq::runOpenCL(LDRI input, Image output, const Params& params) {
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 
 	err = clEnqueueWriteBuffer(	m_queue, mem_image, CL_TRUE, 0, 
-		sizeof(float)*input.width*input.height*3, input.images[0].data, 0, NULL, NULL);
+		sizeof(float)*input.width*input.height*3, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
 
@@ -135,7 +134,7 @@ bool HistEq::runOpenCL(LDRI input, Image output, const Params& params) {
 	return passed;
 }
 
-bool HistEq::runReference(LDRI input, Image output) {
+bool HistEq::runReference(Image input, Image output) {
 	// Check for cached result
 	if (m_reference.data) {
 		memcpy(output.data, m_reference.data, output.width*output.height*4);
@@ -150,9 +149,9 @@ bool HistEq::runReference(LDRI input, Image output) {
 	reportStatus("\tRunning reference");
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
-			red   = getPixel(input.images[0], x, y, 0)*255.f;
-			green = getPixel(input.images[0], x, y, 1)*255.f;
-			blue  = getPixel(input.images[0], x, y, 2)*255.f;
+			red   = getPixel(input, x, y, 0)*255.f;
+			green = getPixel(input, x, y, 1)*255.f;
+			blue  = getPixel(input, x, y, 2)*255.f;
 			brightness = std::max(std::max(red, green), blue);
 			brightness_hist[brightness] ++;
 		}
@@ -167,9 +166,9 @@ bool HistEq::runReference(LDRI input, Image output) {
 	float3 hsv;
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
-			rgb.x = getPixel(input.images[0], x, y, 0)*255.f;
-			rgb.y = getPixel(input.images[0], x, y, 1)*255.f;
-			rgb.z = getPixel(input.images[0], x, y, 2)*255.f;
+			rgb.x = getPixel(input, x, y, 0)*255.f;
+			rgb.y = getPixel(input, x, y, 1)*255.f;
+			rgb.z = getPixel(input, x, y, 2)*255.f;
 			hsv = RGBtoHSV(rgb);		//Convert to HSV to get Hue and Saturation
 
 			hsv.z = floor(

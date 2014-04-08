@@ -19,22 +19,21 @@ using namespace hdr;
 
 GammaAdj::GammaAdj() : Filter() {
 	m_name = "GammaAdj";
-	m_type = TONEMAP;
 }
 
-bool GammaAdj::runHalideCPU(LDRI input, Image output, const Params& params) {
+bool GammaAdj::runHalideCPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool GammaAdj::runHalideGPU(LDRI input, Image output, const Params& params) {
+bool GammaAdj::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool GammaAdj::runOpenCL(LDRI input, Image output, const Params& params) {
+bool GammaAdj::runOpenCL(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool GammaAdj::runReference(LDRI input, Image output) {
+bool GammaAdj::runReference(Image input, Image output) {
 	// Check for cached result
 	if (m_reference.data) {
 		memcpy(output.data, m_reference.data, output.width*output.height*4);
@@ -50,9 +49,9 @@ bool GammaAdj::runReference(LDRI input, Image output) {
 	float3 rgb, hsv;
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
-			rgb.x = getPixel(input.images[0], x, y, 0);
-			rgb.y = getPixel(input.images[0], x, y, 1);
-			rgb.z = getPixel(input.images[0], x, y, 2);
+			rgb.x = getPixel(input, x, y, 0);
+			rgb.y = getPixel(input, x, y, 1);
+			rgb.z = getPixel(input, x, y, 2);
 			hsv = RGBtoHSV(rgb);
 
 			hsv.z /= 255.f;
@@ -72,9 +71,9 @@ bool GammaAdj::runReference(LDRI input, Image output) {
 	int _x, _y;
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
-			rgb.x = getPixel(input.images[0], x, y, 0);
-			rgb.y = getPixel(input.images[0], x, y, 1);
-			rgb.z = getPixel(input.images[0], x, y, 2);
+			rgb.x = getPixel(input, x, y, 0);
+			rgb.y = getPixel(input, x, y, 1);
+			rgb.z = getPixel(input, x, y, 2);
 			hsv = RGBtoHSV(rgb);
 			hsv.z = 0;
 
