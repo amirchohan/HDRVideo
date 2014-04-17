@@ -67,7 +67,7 @@ bool Filter::initCL(const Params& params, const char *source, const char *option
 	reportStatus("Using device: %s", name);
 
 	// Initialize SDL2
-	SDL_Init(SDL_INIT_VIDEO);
+	/*SDL_Init(SDL_INIT_VIDEO);
 	// Window mode MUST include SDL_WINDOW_OPENGL for use with OpenGL.
 	SDL_Window *window = SDL_CreateWindow( "SDL2/OpenGL Demo", 0, 0, 640, 480, SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
 	// Create an OpenGL context associated with the window.
@@ -79,9 +79,9 @@ bool Filter::initCL(const Params& params, const char *source, const char *option
 		CL_GLX_DISPLAY_KHR, (cl_context_properties)glXGetCurrentDisplay(), // GLX Display
 		CL_CONTEXT_PLATFORM, (cl_context_properties)platform, // OpenCL platform
 		0 
-	};
+	};*/
 
-	m_clContext = clCreateContext(properties, 1, &m_device, NULL, NULL, &err);
+	m_clContext = clCreateContext(NULL, 1, &m_device, NULL, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating context", return false);
 
 	m_queue = clCreateCommandQueue(m_clContext, m_device, 0, &err);

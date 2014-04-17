@@ -1,1 +1,20 @@
-hel
+drastic change in the luminance across image ==> must give rise to large magnitude luminance gradients at some scale.
+fine details such as texture correspond to gradients of much smaller scale.
+
+aim is to identify large gradients at various scales and attenuate their magnitudes while keeping their directions unaltered
+	- this attenuation must be progressive, penalising larger gradients more heavily than smaller ones
+		- this will compress drastic luminance changes while preserving fine details
+
+
+-all computation done on logarithm of luminances 
+
+
+- get log(image luminance)
+- compute luminance gradients. so the output of this will be two matrices, one for gradient in x direction and other for gradient in y direction (H(x,y)).
+- use the given attenuation function (o(x,y)) to compress the dynamic range of the image. this should penalise larger gradients more heavily that smaller ones. (this will give G(x,y))
+- construct I(x,y) using the poisson equation.
+- apply exp(I(x,y)) to get the final image.
+
+
+
+I am using av_grad of the current level to compute alpha;

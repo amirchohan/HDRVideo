@@ -15,3 +15,34 @@ Project TODO list:
 	Implement the paper Dan Curran is using
 
 	Provide option of stitching again
+
+
+
+
+Thursday:
+	Get opencl implemetation for all the HDR filters working:
+		- HistEq
+		- GammaAdj
+		- Reinhard
+		- GradDom
+	Make the code as platform independent as possible and ready for integration with Android
+		- Check if CL-GL sharing enabled then display the results on screen, otherwise save them to device
+		- any other stuff which might come in way
+
+Friday:
+	Gradient Domain stuff serial code
+
+Saturday:
+	Gradient Domain OpenCL
+
+Sunday:
+	Rewrite the background chapter explaining to reflect the changes in the project
+		- Project is now about creating a GPU pipeline for real-time HDR filtering
+	Have a plan of writing the thesis over next few days.
+
+Monday-Wednesday:
+	Write the thesis
+	Work on improving the OpenCL at night
+
+Thursday and Friday:
+	Catch up on all the Evolutionary Game Theory stuff

@@ -14,7 +14,7 @@ LIBS = $(JPGLIBd)
 
 CXX      = g++
 CXXFLAGS = -I$(SRCDIR) -O2 -fopenmp -DCL_USE_DEPRECATED_OPENCL_1_1_APIS
-LDFLAGS  = -lOpenCL -lSDL2 -lSDL2_image -lpthread -lglut -lGL -lGLEW -lGLU
+LDFLAGS  = -lOpenCL -lSDL2 -lSDL2_image -lpthread -lGL -lGLU
 MODULES  = Filter HistEq GammaAdj Reinhard
 OBJECTS  = $(MODULES:%=$(OBJDIR)/%.o)
 SOURCES  = $(MODULES:%=$(SRCDIR)/%.cpp)
