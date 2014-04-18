@@ -17,6 +17,9 @@
 #define METHOD_HALIDE_GPU (1<<3)
 #define METHOD_OPENCL     (1<<4)
 
+#define PIXEL_RANGE	256	//8-bit
+#define NUM_CHANNELS 4	//RGBA
+
 #define CHECK_ERROR_OCL(err, op, action)							\
 	if (err != CL_SUCCESS) {										\
 		reportStatus("Error during operation '%s' (%d)", op, err);	\

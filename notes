@@ -18,3 +18,14 @@ aim is to identify large gradients at various scales and attenuate their magnitu
 
 
 I am using av_grad of the current level to compute alpha;
+
+
+
+
+
+Filters				Serial		OpenCL
+---------------------------------------
+HistEq				Yes			Yes
+GammaAdj
+Reinhard
+GradDomain

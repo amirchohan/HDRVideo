@@ -140,8 +140,8 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 }
 
 bool Filter::verify(Image input, Image output, float tolerance) {
-	// Compute reference image
-	Image ref = {(float*) calloc(output.width*output.height*4, sizeof(float)), output.width, output.height};
+	// Compute reference image8
+	Image ref = {(float*) calloc(output.width*output.height*NUM_CHANNELS, sizeof(float)), output.width, output.height};
 	runReference(input, ref);
 
 	// Compare pixels
@@ -149,7 +149,7 @@ bool Filter::verify(Image input, Image output, float tolerance) {
 	const int maxErrors = 16;
 	for (int y = 0; y < output.height; y++) {
 		for (int x = 0; x < output.width; x++) {
-			for (int c = 0; c < 4; c++) {
+			for (int c = 0; c < NUM_CHANNELS; c++) {
 				float r = getPixel(ref, x, y, c);
 				float o = getPixel(output, x, y, c);
 				float diff = abs(r - o);
@@ -225,26 +225,26 @@ buffer_t createHalideBuffer(Image &image) {
 float getPixel(Image &image, int x, int y, int c) {
 	int _x = clamp(x, 0, image.width-1);
 	int _y = clamp(y, 0, image.height-1);
-	return image.data[(_x + _y*image.width)*4 + c];
+	return image.data[(_x + _y*image.width)*NUM_CHANNELS + c];
 }
 
 void setPixel(Image &image, int x, int y, int c, float value) {
 	int _x = clamp(x, 0, image.width-1);
 	int _y = clamp(y, 0, image.height-1);
-	image.data[(_x + _y*image.width)*4 + c] = clamp(value, 0.f, 1.f);
+	image.data[(_x + _y*image.width)*NUM_CHANNELS + c] = clamp(value, 0.f, 1.f);
 }
 
 float getPixelLuminance(float3 pixel_val) {
-	return pixel_val.x*0.2126
+	return    pixel_val.x*0.2126
 			+ pixel_val.y*0.7152
 			+ pixel_val.z*0.0722;
 }
 
 
 float3 RGBtoHSV(float3 rgb) {
-	float r = rgb.x;
-	float g = rgb.y;
-	float b = rgb.z;
+	float r = rgb.x*PIXEL_RANGE;
+	float g = rgb.y*PIXEL_RANGE;
+	float b = rgb.z*PIXEL_RANGE;
 	float min, max, delta;
 	min = std::min(std::min(r, g), b);
 	max = std::max(std::max(r, g), b);
@@ -278,7 +278,7 @@ float3 HSVtoRGB(float3 hsv) {
 	float f, p, q, t;
 	float3 rgb;
 	if( s == 0 ) { // achromatic (grey)
-		rgb.x = rgb.y = rgb.z = v;
+		rgb.x = rgb.y = rgb.z = v/PIXEL_RANGE;
 		return rgb;
 	}
 	h /= 60;			// sector 0 to 5
@@ -319,6 +319,9 @@ float3 HSVtoRGB(float3 hsv) {
 			rgb.z = q;
 			break;
 	}
+	rgb.x = rgb.x/PIXEL_RANGE;
+	rgb.y = rgb.y/PIXEL_RANGE;
+	rgb.z = rgb.z/PIXEL_RANGE;
 	return rgb;
 }
 

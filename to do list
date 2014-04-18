@@ -18,6 +18,9 @@ Project TODO list:
 
 
 
+HistEq
+	- to compute histogram cdf currently just using a serial scan
+
 
 Thursday:
 	Get opencl implemetation for all the HDR filters working:
@@ -25,6 +28,7 @@ Thursday:
 		- GammaAdj
 		- Reinhard
 		- GradDom
+
 	Make the code as platform independent as possible and ready for integration with Android
 		- Check if CL-GL sharing enabled then display the results on screen, otherwise save them to device
 		- any other stuff which might come in way
