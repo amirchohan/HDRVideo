@@ -10,7 +10,9 @@
 
 #include "HistEq.h"
 #include "GammaAdj.h"
-#include "Reinhard.h"
+#include "ReinhardLocal.h"
+#include "ReinhardGlobal.h"
+#include "GradDom.h"
 
 using namespace hdr;
 using namespace std;
@@ -22,7 +24,9 @@ struct _options_ {
 	_options_() {
 		filters["histEq"] = new HistEq();
 		filters["gammaAdj"] = new GammaAdj();
-		filters["reinhard"] = new Reinhard();
+		filters["reinhardGlobal"] = new ReinhardGlobal();
+		filters["reinhardLocal"] = new ReinhardLocal();
+		filters["gradDom"] = new GradDom();
 
 		methods["reference"] = METHOD_REFERENCE;
 		methods["opencl"] = METHOD_OPENCL;

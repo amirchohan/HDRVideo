@@ -1,4 +1,4 @@
-const char *reinhard_kernel =
+const char *gradDom_kernel =
 "\n"
 "float3 RGBtoXYZ(float3 rgb);\n"
 "\n"

@@ -152,7 +152,8 @@ bool Filter::verify(Image input, Image output, float tolerance) {
 			for (int c = 0; c < NUM_CHANNELS; c++) {
 				float r = getPixel(ref, x, y, c);
 				float o = getPixel(output, x, y, c);
-				float diff = abs(r - o);
+				float diff = r - o;
+				diff = diff >= 0 ? diff : -diff;
 
 				if (diff > tolerance) {
 					// Only report first few errors
@@ -220,6 +221,12 @@ buffer_t createHalideBuffer(Image &image) {
 	buffer.stride[2] = 1;
 	buffer.elem_size = 1;
 	return buffer;
+}
+
+float getValue(float* data, int x, int y, int width, int height) {
+	int _x = clamp(x, 0, width);
+	int _y = clamp(y, 0, height);
+	return data[_x + _y*width];
 }
 
 float getPixel(Image &image, int x, int y, int c) {

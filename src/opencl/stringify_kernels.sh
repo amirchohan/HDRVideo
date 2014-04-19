@@ -1,6 +1,6 @@
 #!/bin/bash
 
-kernels="histEq reinhard"
+kernels="histEq reinhardGlobal reinhardLocal gradDom"
 
 for name in $kernels
 do

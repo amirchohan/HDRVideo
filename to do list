@@ -25,7 +25,6 @@ HistEq
 Thursday:
 	Get opencl implemetation for all the HDR filters working:
 		- HistEq
-		- GammaAdj
 		- Reinhard
 		- GradDom
 
@@ -50,3 +49,6 @@ Monday-Wednesday:
 
 Thursday and Friday:
 	Catch up on all the Evolutionary Game Theory stuff
+
+
+Have a system to pass down filter parameters from commandline

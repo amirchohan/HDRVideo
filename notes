@@ -27,5 +27,5 @@ Filters				Serial		OpenCL
 ---------------------------------------
 HistEq				Yes			Yes
 GammaAdj
-Reinhard
+Reinhard-Global		Yes
 GradDomain

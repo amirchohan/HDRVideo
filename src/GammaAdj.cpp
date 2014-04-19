@@ -43,19 +43,42 @@ bool GammaAdj::runReference(Image input, Image output) {
 
 	reportStatus("Running reference");
 
-	float* gamma_adj = (float*) calloc(input.width*input.height, sizeof(float)); 
+	const int hist_size = PIXEL_RANGE;
+	unsigned int brightness_hist[hist_size] = {0};
+	int brightness;
+	float3 rgb;
 
-	//apply double-sided gamma adjustment to the gammaAdj channel
-	float3 rgb, hsv;
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 			rgb.x = getPixel(input, x, y, 0);
 			rgb.y = getPixel(input, x, y, 1);
 			rgb.z = getPixel(input, x, y, 2);
-			hsv = RGBtoHSV(rgb);
+			brightness = std::max(std::max(rgb.x, rgb.y), rgb.z)*hist_size;
+			brightness_hist[brightness] ++;
+		}
+	}
+	for (int i = 1; i < hist_size; i++) {
+		brightness_hist[i] += brightness_hist[i-1];
+	}
 
-			hsv.z /= 255.f;
-			hsv.z = (1 - pow((1 - pow(hsv.z, 0.25)), 0.5))*255.f;
+	float3 hsv;
+	float* gamma_adj = (float*) calloc(input.width*input.height, sizeof(float)); 
+
+	for (int y = 0; y < input.height; y++) {
+		for (int x = 0; x < input.width; x++) {
+			rgb.x = getPixel(input, x, y, 0);
+			rgb.y = getPixel(input, x, y, 1);
+			rgb.z = getPixel(input, x, y, 2);
+			hsv = RGBtoHSV(rgb);		//Convert to HSV to get Hue and Saturation
+
+			//histogram equalisation
+			hsv.z = ((hist_size-1)*(brightness_hist[(int)hsv.z] - brightness_hist[0]))
+						/(input.height*input.width - brightness_hist[0]);
+
+			hsv.z = clamp(hsv.z, 0.f, PIXEL_RANGE);
+			//gamma adjustment
+			hsv.z /= PIXEL_RANGE;
+			hsv.z = (1 - pow((1 - pow(hsv.z, 0.25)), 0.5))*PIXEL_RANGE;
 
 			gamma_adj[x + y*input.width] = hsv.z;
 		}
@@ -75,8 +98,8 @@ bool GammaAdj::runReference(Image input, Image output) {
 			rgb.y = getPixel(input, x, y, 1);
 			rgb.z = getPixel(input, x, y, 2);
 			hsv = RGBtoHSV(rgb);
-			hsv.z = 0;
 
+			hsv.z = 0;
 			for (int j = -1; j <= 1; j++) {
 				for (int i = -1; i <= 1; i++) {
 					_x = clamp(x+i, 0, input.width-1);
@@ -84,9 +107,10 @@ bool GammaAdj::runReference(Image input, Image output) {
 					hsv.z += gamma_adj[ _x + _y*input.width] * sharpen_mask[i+1][j+1];
 				}
 			}
-			hsv.z = hsv.z/8 + gamma_adj[x + y*input.width];
-			hsv.y /= 255.f;
-			hsv.y = pow(hsv.y, 0.95)*255.f;
+			hsv.z = hsv.z/8.f + gamma_adj[x + y*input.width];
+			hsv.y /= PIXEL_RANGE;
+			hsv.y = pow(hsv.y, 1.0)*PIXEL_RANGE;
+
 			rgb = HSVtoRGB(hsv);
 			setPixel(output, x, y, 0, rgb.x);
 			setPixel(output, x, y, 1, rgb.y);

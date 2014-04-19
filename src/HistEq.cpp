@@ -196,7 +196,6 @@ bool HistEq::runReference(Image input, Image output) {
 			rgb.y = getPixel(input, x, y, 1);
 			rgb.z = getPixel(input, x, y, 2);
 			hsv = RGBtoHSV(rgb);		//Convert to HSV to get Hue and Saturation
-			//printf("%d, %d, %f\n", x, y, hsv.z);
 
 			hsv.z = floor(
 				((hist_size-1)*(brightness_hist[(int)hsv.z] - brightness_hist[0]))
@@ -217,8 +216,8 @@ bool HistEq::runReference(Image input, Image output) {
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new float[output.width*output.height*3];
-	memcpy(m_reference.data, output.data, output.width*output.height*3);
+	m_reference.data = new float[output.width*output.height*NUM_CHANNELS];
+	memcpy(m_reference.data, output.data, output.width*output.height*NUM_CHANNELS);
 
 	return true;
 }

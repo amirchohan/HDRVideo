@@ -2,16 +2,13 @@
 
 namespace hdr
 {
-class Reinhard : public Filter {
+class ReinhardLocal : public Filter {
 public:
-	Reinhard();
+	ReinhardLocal();
 
 	virtual bool runHalideCPU(Image input, Image output, const Params& params);
 	virtual bool runHalideGPU(Image input, Image output, const Params& params);
 	virtual bool runOpenCL(Image input, Image output, const Params& params);
 	virtual bool runReference(Image input, Image output);
 };
-
-float weight(float luminance);
-
 }

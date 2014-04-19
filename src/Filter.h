@@ -112,6 +112,8 @@ buffer_t createHalideBuffer(Image &image);
 float clamp(float x, float min, float max);
 float getPixelLuminance(float3 pixel_val);
 
+float getValue(float* data, int x, int y, int width, int height);
+
 float getPixel(Image &image, int x, int y, int c);
 void setPixel(Image &image, int x, int y, int c, float value);
 
