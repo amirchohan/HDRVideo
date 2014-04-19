@@ -31,26 +31,6 @@ bool GradDom::runOpenCL(Image input, Image output, const Params& params) {
 	return false;
 }
 
-//computes gradient of a channel using forward difference
-float* gradient_forward(float* input, int width, int height) {
-	float* result = (float*) calloc(width*height, sizeof(float));
-
-	for (int y = 0; y < height-1; y++) {
-		for (int x = 0; x < width-1; x++) {
-			result[x + y*width] = sqrt(pow(input[x+1 + y*width]-input[x + y*width], 2) + pow(input[x + (y+1)*width]-input[x + y*width], 2));
-		}
-		int x = width-1;
-		result[x + y*width] = abs(input[x + (y+1)*width]-input[x + y*width]);
-	}
-	int y = height-1;
-	for (int x = 0; x < width-1; x++) {
-		result[x + y*width] = abs(input[x+1 + y*width]-input[x + y*width]);
-	}
-	return result;
-}
-
-
-
 float* attenuate_func(float* lum, int width, int height) {
 	float beta = 0.85;
 	int k = 0;
@@ -76,8 +56,8 @@ float* attenuate_func(float* lum, int width, int height) {
 				int y_north = clamp(y-1, 0, k_height-1);
 				int y_south = clamp(y+1, 0, k_height-1);
 
-				float x_grad = (k_lum[x_west + y*k_width] - k_lum[x_east + y*k_width])/(float)pow(2.f, k+1);
-				float y_grad = (k_lum[x + y_south*k_width] - k_lum[x + y_north*k_width])/(float)pow(2.f, k+1);
+				float x_grad = (k_lum[x_west + y*k_width] - k_lum[x_east + y*k_width])/pow(2.f, k+1);
+				float y_grad = (k_lum[x + y_south*k_width] - k_lum[x + y_north*k_width])/pow(2.f, k+1);
 				k_gradient[x + y*k_width] = sqrt(pow(x_grad, 2) + pow(y_grad, 2));
 				k_av_grad += k_gradient[x + y*k_width];
 			}
@@ -86,7 +66,9 @@ float* attenuate_func(float* lum, int width, int height) {
 		pyramid_sizes.push_back(std::pair< unsigned int, unsigned int >(k_width, k_height));
 		av_grads.push_back(k_av_grad/(k_width*k_height));
 
-		k_lum = mipmap(k_lum, k_width, k_height);
+		printf("%d, %d, %f\n", k_width, k_height, k_av_grad/(k_width*k_height));
+
+		k_lum = channel_mipmap(k_lum, k_width, k_height);
 	}
 
 
@@ -119,7 +101,7 @@ float* attenuate_func(float* lum, int width, int height) {
 		k_gradient = pyramid.back();
 		k_width = pyramid_sizes.back().first;
 		k_height = pyramid_sizes.back().second;
-		float k_alpha = 0.1*av_grads.back();
+		float k_alpha = 0.1f*av_grads.back();
 		float k_xy_scale_factor;
 		float k_xy_atten_func;
 		k--;
@@ -166,7 +148,15 @@ float* attenuate_func(float* lum, int width, int height) {
 }
 
 
-float* poissonSolver(float* prev_dr, float* div_grad, int width, int height, float terminationCriterea=0.001) {
+float* poissonSolver(float* lum, float* div_grad, int width, int height, float terminationCriterea=0.001) {
+
+	float* prev_dr = (float*) calloc(height*width, sizeof(float));
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			prev_dr[x + y*width] = lum[x+y*width];
+		}
+	}
+
 
 	float* new_dr = (float*) calloc(height*width, sizeof(float));
 
@@ -183,14 +173,15 @@ float* poissonSolver(float* prev_dr, float* div_grad, int width, int height, flo
 				int y_south = clamp(y+1, 0, height-1);
 
 				float prev = prev_dr[x_west + y*width] + prev_dr[x_east + y*width] + prev_dr[x + y_north*width] + prev_dr[x + y_south*width];
+				//printf("%f\n", div_grad[x+y*width]);
 				new_dr[x + y*width] = 0.25f*(prev - div_grad[x + y*width]);
 				diff = new_dr[x + y*width] - prev_dr[x + y*width];
-				diff = (diff > 0) ? diff : -diff;
+				diff = (diff >= 0) ? diff : -diff;
 
 				if (diff < terminationCriterea) converged_pixels++;
 			}
 		}
-		//printf("%d\n", converged_pixels);
+		//printf("%d, %d\n", converged_pixels, width*height);
 		float* swap = prev_dr;
 		prev_dr = new_dr;
 		new_dr = swap;
@@ -232,7 +223,7 @@ bool GradDom::runReference(Image input, Image output) {
 
 	reportStatus("Running reference");
 
-	float saturation_exp = 0.5;
+	float sat = 1.f;
 
 	//computing logarithmic luminace of the image
 	float* lum = (float*) calloc(input.width * input.height, sizeof(float));	//logarithm luminance
@@ -288,9 +279,10 @@ bool GradDom::runReference(Image input, Image output) {
 	float3 rgb;
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
-			rgb.x = pow(getPixel(input, x, y, 0)/exp(lum[x + y*input.width]), 1.0)*exp(new_lum[x + y*input.width]);
-			rgb.y = pow(getPixel(input, x, y, 1)/exp(lum[x + y*input.width]), 1.0)*exp(new_lum[x + y*input.width]);
-			rgb.z = pow(getPixel(input, x, y, 2)/exp(lum[x + y*input.width]), 1.0)*exp(new_lum[x + y*input.width]);
+			//printf("%f, %f\n", lum[x + y*input.width], new_dr[x+y*input.width]);
+			rgb.x = pow(getPixel(input, x, y, 0)/exp(lum[x + y*input.width]), sat)*exp(new_lum[x + y*input.width]);
+			rgb.y = pow(getPixel(input, x, y, 1)/exp(lum[x + y*input.width]), sat)*exp(new_lum[x + y*input.width]);
+			rgb.z = pow(getPixel(input, x, y, 2)/exp(lum[x + y*input.width]), sat)*exp(new_lum[x + y*input.width]);
 
 			setPixel(output, x, y, 0, rgb.x);
 			setPixel(output, x, y, 1, rgb.y);

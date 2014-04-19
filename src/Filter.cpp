@@ -203,11 +203,11 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 /////////////////
 
 
-float* mipmap(float* input, int width, int height, int level) {
+float* channel_mipmap(float* input, int width, int height, int level) {
 	int scale_factor = pow(2, level);
 	int m_width = width/scale_factor;
 	int m_height = height/scale_factor;
-	float* result = (float*) calloc(width*height, sizeof(float));
+	float* result = (float*) calloc(m_width*m_height, sizeof(float));
 
 	for (int y = 0; y < m_height; y++) {
 		for (int x = 0; x < m_width; x++) {
