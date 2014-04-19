@@ -169,97 +169,92 @@ bool ReinhardLocal::runReference(Image input, Image output) {
 
 	reportStatus("Running reference");
 
-	float* hdr_luminance = (float*) calloc(input.height*input.width, sizeof(float));
-
-	float logAvgLum = 0.f;
-	float L_white = 0.f;	//smallest luminance that'll be mapped to pure white
 
 	//some parameters
-	float key = 0.36f;
+	float key = 0.18f;
 	float sat = 1.6f;
-	float factor = key/logAvgLum;
 	float epsilon = 0.05;
 	float phi = 8.0;
-	float scale[7] = {1, 2, 4, 8, 16, 32, 64};
-	float v1, v2;
+	const int mipmap_levels = 8;
 
+	float logAvgLum = 0.f;
+	float Lwhite = 0.f;	//smallest luminance that'll be mapped to pure white
 
+	float* lum = (float*) calloc(input.height*input.width, sizeof(float));
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
 
-			float3 hdr = {getPixel(input, x, y, 0),
+			float3 rgb = {getPixel(input, x, y, 0),
 				getPixel(input, x, y, 1), getPixel(input, x, y, 2)};
 
-			float lum = getPixelLuminance(hdr);
-			logAvgLum += log(lum + 0.000001);
+			float cur_lum = getPixelLuminance(rgb);
+			if (cur_lum > Lwhite) Lwhite = cur_lum;
 
-			if (lum > L_white) L_white = lum;
+			logAvgLum += log(cur_lum + 0.000001);
+			lum[x + y*input.width] = cur_lum;
 		}
 	}
 	logAvgLum = exp(logAvgLum/(input.width*input.height));
 
+
+	float factor = key/logAvgLum;
+	float scale[mipmap_levels-1];
+
+	Image* mipmap_pyramid = (Image*) calloc(mipmap_levels, sizeof(Image));
+	mipmap_pyramid[0] = input;
+	for (int i=1; i<mipmap_levels; i++) {
+		mipmap_pyramid[i] = image_mipmap(input, i);
+		scale[i-1] = pow(2, i-1);
+	}
+
 	for (int y = 0; y < input.height; y++) {
 		for (int x = 0; x < input.width; x++) {
-			float La = 0;
 
-			for (int level=1; level<6; level++) {
+			float local_logAvgLum = 0.f;
+			for (int i=0; i<mipmap_levels-1; i++) {
+				int centre_x = x/pow(2, i);
+				int centre_y = y/pow(2, i);
+				int surround_x = x/pow(2, i+1);
+				int surround_y = y/pow(2, i+1);
 
-				int sc = scale[level]/2;
-				float r1 = 0, r2 = 0;
-				float v1 = 0, v2 = 0;
+				float3 centre_pixel = { getPixel(mipmap_pyramid[i], centre_x, centre_y, 0),
+										getPixel(mipmap_pyramid[i], centre_x, centre_y, 1),
+										getPixel(mipmap_pyramid[i], centre_x, centre_y, 2)};
+				float3 surround_pixel= {getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 0),
+										getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 1),
+										getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 2)};
+				float centre_logAvgLum = getPixelLuminance(centre_pixel);
+				float surround_logAvgLum = getPixelLuminance(surround_pixel);
 
 
-				for (int j = -sc; j <= sc; j++) {
-					for (int i = -sc; i <= sc; i++) {
-						int _x = clamp(x+i, 0, input.width-1);
-						int _y = clamp(y+j, 0, input.height-1);
+				float logAvgLum_diff = centre_logAvgLum - surround_logAvgLum;
+				logAvgLum_diff = logAvgLum_diff >= 0 ? logAvgLum_diff : -logAvgLum_diff;
 
-						r1 = ( 1/(phi*pow(level*scale[level], 2)) ) *
-							exp(- (pow(_x,2) + pow(_y,2))/pow(level*scale[level], 2) );
-						v1 += hdr_luminance[_x + _y*input.width]*r1;
-
-
-						r2 = (1/(phi*pow((level+1)*scale[level+1], 2)) ) *
-							exp(- (pow(_x,2) + pow(_y,2))/pow((level+1)*scale[level+1], 2));
-						v2 += hdr_luminance[_x + _y*input.width]*r2;
-
-					}
-				}
-				v1 *= factor;
-				v2 *= factor;
-
-				float V = abs(v1 - v2) / (pow(2, phi) * key/(scale[level] * scale[level]) + v1);
-
-				if (V > epsilon) {
-					La = v1;
+				if (logAvgLum_diff/(pow(2.f, phi)*key/(scale[i]*scale[i]) + centre_logAvgLum) > epsilon) {
+					local_logAvgLum = centre_logAvgLum;
 					break;
 				}
-				else La = v2;
+				else local_logAvgLum = surround_logAvgLum;			
 			}
 
-			//printf("%f\n", La);
-
 			float3 rgb, xyz;
-			rgb.x = getPixel(input, x, y, 0)/255.f;
-			rgb.y = getPixel(input, x, y, 1)/255.f;
-			rgb.z = getPixel(input, x, y, 2)/255.f;
+			rgb.x = getPixel(input, x, y, 0);
+			rgb.y = getPixel(input, x, y, 1);
+			rgb.z = getPixel(input, x, y, 2);
 
 			xyz = RGBtoXYZ(rgb);
 
-			float Y  = (key/logAvgLum) * xyz.y;
-			float Yd = Y /(1.0 + La);
+			float L  = (key/logAvgLum) * xyz.y;
+			float Ld = L /(1.0 + local_logAvgLum);
 
-			rgb.x = pow(rgb.x/xyz.x, sat) * Yd;
-			rgb.y = pow(rgb.y/xyz.y, sat) * Yd;
-			rgb.z = pow(rgb.z/xyz.z, sat) * Yd;
+			rgb.x = pow(rgb.x/xyz.y, sat) * Ld;
+			rgb.y = pow(rgb.y/xyz.y, sat) * Ld;
+			rgb.z = pow(rgb.z/xyz.y, sat) * Ld;
 
-			//printf("%f, %f, %f\n", rgb.x, rgb.y, rgb.z);
-
-			setPixel(output, x, y, 0, rgb.x*255.f);
-			setPixel(output, x, y, 1, rgb.y*255.f);
-			setPixel(output, x, y, 2, rgb.z*255.f);
+			setPixel(output, x, y, 0, rgb.x);
+			setPixel(output, x, y, 1, rgb.y);
+			setPixel(output, x, y, 2, rgb.z);
 		}
-		printf("%d\n", y);
 	}
 
 

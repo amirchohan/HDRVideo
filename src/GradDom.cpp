@@ -50,24 +50,6 @@ float* gradient_forward(float* input, int width, int height) {
 }
 
 
-//mipmaps the given channel input in 3x3 order
-float* mipmap(float* input, int width, int height) {
-
-	int m_width = width/2;
-	int m_height = height/2;
-	float* result = (float*) calloc(width*height, sizeof(float));
-
-	for (int y = 0; y < m_height; y++) {
-		for (int x = 0; x < m_width; x++) {
-			int _x = 2*x;
-			int _y = 2*y;
-			result[x + y*m_width] = (input[_x + _y*width] + input[_x+1 + _y*width] + input[_x + (_y+1)*width] + input[(_x+1) + (_y+1)*width])/4.f;
-		}
-	}
-
-	return result;
-}
-
 
 float* attenuate_func(float* lum, int width, int height) {
 	float beta = 0.85;

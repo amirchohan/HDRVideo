@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <algorithm>
 #include <omp.h>
-#include <vector>
 
 #include "ReinhardGlobal.h"
 #include "opencl/reinhardGlobal.h"
@@ -34,7 +33,7 @@ bool ReinhardGlobal::runHalideGPU(Image input, Image output, const Params& param
 bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) {
 
 	//some parameters
-	float key = 0.36f;
+	float key = 0.18f;
 	float sat = 1.6f;
 
 	char flags[1024];
@@ -167,7 +166,7 @@ bool ReinhardGlobal::runReference(Image input, Image output) {
 	reportStatus("Running reference");
 
 	//some parameters
-	float key = 0.36f;
+	float key = 0.18f;
 	float sat = 1.6f;
 
 	float logAvgLum = 0.f;

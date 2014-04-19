@@ -109,6 +109,9 @@ double getCurrentTime();
 // Image utils
 buffer_t createHalideBuffer(Image &image);
 
+float* mipmap(float* input, int width, int height, int level=1);
+Image image_mipmap(Image &input, int level=1);
+
 float clamp(float x, float min, float max);
 float getPixelLuminance(float3 pixel_val);
 

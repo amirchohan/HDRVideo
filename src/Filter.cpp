@@ -202,6 +202,41 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 // Image utils //
 /////////////////
 
+
+float* mipmap(float* input, int width, int height, int level) {
+	int scale_factor = pow(2, level);
+	int m_width = width/scale_factor;
+	int m_height = height/scale_factor;
+	float* result = (float*) calloc(width*height, sizeof(float));
+
+	for (int y = 0; y < m_height; y++) {
+		for (int x = 0; x < m_width; x++) {
+			int _x = scale_factor*x;
+			int _y = scale_factor*y;
+			result[x + y*m_width] = (input[_x + _y*width] + input[_x+1 + _y*width] + input[_x + (_y+1)*width] + input[(_x+1) + (_y+1)*width])/4.f;
+		}
+	}
+	return result;
+}
+
+Image image_mipmap(Image &input, int level) {
+	int scale_factor = pow(2, level);
+	int m_width = input.width/scale_factor;
+	int m_height = input.height/scale_factor;
+
+	Image output = {(float*) calloc(m_width*m_height*NUM_CHANNELS, sizeof(float)), m_width, m_height};
+	for (int y = 0; y < m_height; y++) {
+		for (int x = 0; x < m_width; x++) {
+			int _x = scale_factor*x;
+			int _y = scale_factor*y;
+			setPixel(output, x, y, 0, (getPixel(input, _x, _y, 0) + getPixel(input, _x+1, _y, 0) + getPixel(input, _x, _y+1, 0) + getPixel(input, _x+1, _y+1, 0))/4.f);
+			setPixel(output, x, y, 1, (getPixel(input, _x, _y, 1) + getPixel(input, _x+1, _y, 1) + getPixel(input, _x, _y+1, 1) + getPixel(input, _x+1, _y+1, 1))/4.f);
+			setPixel(output, x, y, 2, (getPixel(input, _x, _y, 2) + getPixel(input, _x+1, _y, 2) + getPixel(input, _x, _y+1, 2) + getPixel(input, _x+1, _y+1, 2))/4.f);
+		}
+	}
+	return output;
+}
+
 int clamp(int x, int min, int max) {
 	return x < min ? min : x > max ? max : x;
 }
