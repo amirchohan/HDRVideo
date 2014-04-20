@@ -5,8 +5,6 @@
 #include <exception>
 #include <stdexcept>
 
-#include "jpeglib.h"
-
 #include "Filter.h"
 
 namespace hdr
@@ -120,10 +118,10 @@ void Filter::releaseCL() {
 		clReleaseContext(m_clContext);
 		m_clContext = 0;
 	}
-	if (m_glContext) {
+	/*if (m_glContext) {
 		SDL_GL_DeleteContext(m_glContext);
 		m_glContext = 0;
-	}
+	}*/
 }
 
 void Filter::reportStatus(const char *format, ...) const {
@@ -189,6 +187,7 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 			runHalideGPU(input, output, params);
 			break;
 		case METHOD_OPENCL:
+			setupOpenCL(params, input.width*input.height);
 			runOpenCL(input, output, params);
 			break;
 		default:
@@ -220,7 +219,7 @@ float* channel_mipmap(float* input, int width, int height, int level) {
 }
 
 Image image_mipmap(Image &input, int level) {
-	int scale_factor = pow(2, level);
+	int scale_factor = pow(2.f, (float)level);
 	int m_width = input.width/scale_factor;
 	int m_height = input.height/scale_factor;
 
@@ -384,74 +383,6 @@ float3 XYZtoRGB(float3 xyz) {
 	return rgb;
 }
 
-
-Image readJPG(const char* filePath) {
-	SDL_Surface *input = IMG_Load(filePath);
-	if (!input) throw std::runtime_error("Problem opening input file");
- 
- 	uchar* udata = (uchar*) input->pixels;
-  	float* data = (float*) calloc(4*(input->w * input->h), sizeof(float));
-
-	for (int y = 0; y < input->h; y++) {
-		for (int x = 0; x < input->w; x++) {
-			for (int j=0; j<3; j++) {
- 		 		data[(x + y*input->w)*4 + j] = ((float)udata[(x + y*input->w)*3 + j])/255.f;
- 		 	}
- 		 	data[(x + y*input->w)*4 + 3] = 0.f;
- 		 }
- 	}
-
- 	Image image = {data, input->w, input->h};
-
- 	free(input);
-
-	return image;
-}
-
-
-void init_buffer(jpeg_compress_struct* cinfo) {}
-void term_buffer(jpeg_compress_struct* cinfo) {}
-boolean empty_buffer(jpeg_compress_struct* cinfo) {
-	return TRUE;
-}
-
-void writeJPG(Image &img, const char* filePath) {
-	FILE *outfile  = fopen(filePath, "wb");
-
-	if (!outfile) throw std::runtime_error("Problem opening output file");
- 
-	struct jpeg_compress_struct cinfo;
-	struct jpeg_error_mgr       jerr;
- 
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_compress(&cinfo);
-	jpeg_stdio_dest(&cinfo, outfile);
-
-	cinfo.image_width      = img.width;
-	cinfo.image_height     = img.height;
-	cinfo.input_components = 3;
-	cinfo.in_color_space   = JCS_RGB;
-
-	jpeg_set_defaults(&cinfo);
-	/*set the quality [0..100]  */
-	jpeg_set_quality (&cinfo, 75, true);
-	jpeg_start_compress(&cinfo, true);
-
-	uchar* charImageData = (uchar*) calloc(3*img.width*img.height, sizeof(uchar));
-	for (int y = 0; y < img.height; y++) {
-		for (int x = 0; x < img.width; x++) {
-			for (int i=0; i < 3; i++)
-				charImageData[(x + y*img.width)*3 + i] = getPixel(img, x, y, i)*255.f;
-		}
-	}
-
-	JSAMPROW row_pointer;          /* pointer to a single row */
- 	while (cinfo.next_scanline < cinfo.image_height) {
-		row_pointer = (JSAMPROW) &charImageData[cinfo.next_scanline*cinfo.input_components*img.width];
-		jpeg_write_scanlines(&cinfo, &row_pointer, 1);
-	} 
-	jpeg_finish_compress(&cinfo);
-}
 
 float weight(float luminance) {
 	if (luminance < 0.5) return luminance*2.0;

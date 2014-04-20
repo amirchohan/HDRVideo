@@ -31,6 +31,11 @@ bool ReinhardLocal::runHalideGPU(Image input, Image output, const Params& params
 	return false;
 }
 
+bool ReinhardLocal::setupOpenCL(const Params& params, const int image_size) {
+	return false;
+}
+
+
 bool ReinhardLocal::runOpenCL(Image input, Image output, const Params& params) {
 
 	//some parameters
@@ -155,14 +160,18 @@ bool ReinhardLocal::runOpenCL(Image input, Image output, const Params& params) {
 	clReleaseKernel(k_globalTMO);
 	clReleaseKernel(k_computeLogAvgLum);
 	releaseCL();*/
-	return true;
+	return false;
+}
+
+bool ReinhardLocal::cleanupOpenCL() {
+	return false;
 }
 
 bool ReinhardLocal::runReference(Image input, Image output) {
 
 	// Check for cached result
 	if (m_reference.data) {
-		memcpy(output.data, m_reference.data, output.width*output.height*4);
+		memcpy(output.data, m_reference.data, output.width*output.height*NUM_CHANNELS);
 		reportStatus("Finished reference (cached)");
 		return true;
 	}

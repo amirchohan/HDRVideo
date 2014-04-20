@@ -30,38 +30,33 @@ bool ReinhardGlobal::runHalideGPU(Image input, Image output, const Params& param
 	return false;
 }
 
-bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) {
+bool ReinhardGlobal::setupOpenCL(const Params& params, const int image_size) {
 
 	//some parameters
 	float key = 0.18f;
 	float sat = 1.6f;
 
 	char flags[1024];
-	sprintf(flags, "-cl-fast-relaxed-math -D NUM_CHANNELS=%d -Dimage_size=%lu", NUM_CHANNELS, input.width*input.height);
+	sprintf(flags, "-cl-fast-relaxed-math -D NUM_CHANNELS=%d -Dimage_size=%d", NUM_CHANNELS, image_size);
 
 	if (!initCL(params, reinhardGlobal_kernel, flags)) {
 		return false;
 	}
 
 	cl_int err;
-	cl_kernel k_computeLogAvgLum, k_globalTMO;
-	cl_mem mem_input, mem_output, mem_logAvgLum, mem_Lwhite;
 
 	/////////////////////////////////////////////////////////////////kernels
-
 	//this kernel computes log average luminance of the image
-	k_computeLogAvgLum = clCreateKernel(m_program, "computeLogAvgLum", &err);
+	kernels["computeLogAvgLum"] = clCreateKernel(m_program, "computeLogAvgLum", &err);
 	CHECK_ERROR_OCL(err, "creating computeLogAvgLum kernel", return false);
 
 	//performs the reinhard global tone mapping operator
-	k_globalTMO = clCreateKernel(m_program, "global_TMO", &err);
+	kernels["global_TMO"] = clCreateKernel(m_program, "global_TMO", &err);
 	CHECK_ERROR_OCL(err, "creating global_TMO kernel", return false);
-
-
 
 	//get info to set the global_reduc and local_reduc according to the GPU specs
 	size_t preferred_wg_size;	//workgroup size should be a multiple of this
-	err = clGetKernelWorkGroupInfo (k_computeLogAvgLum, m_device,
+	err = clGetKernelWorkGroupInfo (kernels["computeLogAvgLum"], m_device,
 		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &preferred_wg_size, NULL);
 	CHECK_ERROR_OCL(err, "getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE", return false);
 
@@ -73,56 +68,68 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 	const int num_wg = global_reduc/local_reduc;
 
 	const size_t local = preferred_wg_size;	//workgroup size for normal kernels
-	const size_t global = ceil((float)input.width*input.height/(float)local) * local;
+	const size_t global = ceil((float)image_size/(float)local) * local;
 
+	global_sizes["reduc"] = global_reduc;
+	global_sizes["normal"] = global;
+
+	local_sizes["reduc"] = local_reduc;
+	local_sizes["normal"] = local;
 
 
 	/////////////////////////////////////////////////////////////////allocating memory
 
-	mem_input = clCreateBuffer(m_clContext, CL_MEM_READ_ONLY, sizeof(float)*input.width*input.height*NUM_CHANNELS, NULL, &err);
+	mems["input"] = clCreateBuffer(m_clContext, CL_MEM_READ_ONLY, sizeof(float)*image_size*NUM_CHANNELS, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
-	mem_output = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*output.width*output.height*NUM_CHANNELS, NULL, &err);
+	mems["output"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*image_size*NUM_CHANNELS, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
-	mem_logAvgLum = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
+	mems["logAvgLum"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating logAvgLum memory", return false);
 
-	mem_Lwhite = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
+	mems["Lwhite"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating Lwhite memory", return false);
 
 
 	/////////////////////////////////////////////////////////////////setting kernel arguements
 
-	err  = clSetKernelArg(k_computeLogAvgLum, 0, sizeof(cl_mem), &mem_input);
-	err  = clSetKernelArg(k_computeLogAvgLum, 1, sizeof(cl_mem), &mem_logAvgLum);
-	err  = clSetKernelArg(k_computeLogAvgLum, 2, sizeof(cl_mem), &mem_Lwhite);
-	err  = clSetKernelArg(k_computeLogAvgLum, 3, sizeof(float*)*local_reduc, NULL);
-	err  = clSetKernelArg(k_computeLogAvgLum, 4, sizeof(float*)*local_reduc, NULL);
+	err  = clSetKernelArg(kernels["computeLogAvgLum"], 0, sizeof(cl_mem), &mems["input"]);
+	err  = clSetKernelArg(kernels["computeLogAvgLum"], 1, sizeof(cl_mem), &mems["logAvgLum"]);
+	err  = clSetKernelArg(kernels["computeLogAvgLum"], 2, sizeof(cl_mem), &mems["Lwhite"]);
+	err  = clSetKernelArg(kernels["computeLogAvgLum"], 3, sizeof(float*)*local_reduc, NULL);
+	err  = clSetKernelArg(kernels["computeLogAvgLum"], 4, sizeof(float*)*local_reduc, NULL);
 	CHECK_ERROR_OCL(err, "setting computeLogAvgLum arguments", return false);
 
-	err  = clSetKernelArg(k_globalTMO, 0, sizeof(cl_mem), &mem_input);
-	err  = clSetKernelArg(k_globalTMO, 1, sizeof(cl_mem), &mem_output);
-	err  = clSetKernelArg(k_globalTMO, 2, sizeof(cl_mem), &mem_logAvgLum);
-	err  = clSetKernelArg(k_globalTMO, 3, sizeof(cl_mem), &mem_Lwhite);
-	err  = clSetKernelArg(k_globalTMO, 4, sizeof(float), &key);
-	err  = clSetKernelArg(k_globalTMO, 5, sizeof(float), &sat);
-	err  = clSetKernelArg(k_globalTMO, 6, sizeof(unsigned int), &num_wg);
+	err  = clSetKernelArg(kernels["global_TMO"], 0, sizeof(cl_mem), &mems["input"]);
+	err  = clSetKernelArg(kernels["global_TMO"], 1, sizeof(cl_mem), &mems["output"]);
+	err  = clSetKernelArg(kernels["global_TMO"], 2, sizeof(cl_mem), &mems["logAvgLum"]);
+	err  = clSetKernelArg(kernels["global_TMO"], 3, sizeof(cl_mem), &mems["Lwhite"]);
+	err  = clSetKernelArg(kernels["global_TMO"], 4, sizeof(float), &key);
+	err  = clSetKernelArg(kernels["global_TMO"], 5, sizeof(float), &sat);
+	err  = clSetKernelArg(kernels["global_TMO"], 6, sizeof(unsigned int), &num_wg);
 	CHECK_ERROR_OCL(err, "setting globalTMO arguments", return false);
 
+	return true;
+}
+
+
+bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) {
+
+	cl_int err;
 
 	//transfer memory to the device
-	err = clEnqueueWriteBuffer(m_queue, mem_input, CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(m_queue, mems["input"], CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
 
 	//let it begin
 	double start = omp_get_wtime();
 
-	err = clEnqueueNDRangeKernel(m_queue, k_computeLogAvgLum, 1, NULL, &global_reduc, &local_reduc, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["computeLogAvgLum"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing computeLogAvgLum kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, k_globalTMO, 1, NULL, &global, &local, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["global_TMO"], 1, NULL, &global_sizes["normal"], &local_sizes["normal"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing globalTMO kernel", return false);
 
 	err = clFinish(m_queue);
@@ -131,9 +138,8 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 
 
 	//read results back
-	err = clEnqueueReadBuffer(m_queue, mem_output, CL_TRUE, 0,	sizeof(float)*output.width*output.height*NUM_CHANNELS, output.data, 0, NULL, NULL );
+	err = clEnqueueReadBuffer(m_queue, mems["output"], CL_TRUE, 0,	sizeof(float)*output.width*output.height*NUM_CHANNELS, output.data, 0, NULL, NULL );
 	CHECK_ERROR_OCL(err, "reading image memory", return false);
-
 
 	reportStatus("Finished OpenCL kernel");
 
@@ -143,16 +149,20 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 		runTime*1000, passed ? "passed" : "failed");
 
 
-	//cleanup
-	clReleaseMemObject(mem_input);
-	clReleaseMemObject(mem_output);
-	clReleaseMemObject(mem_Lwhite);
-	clReleaseMemObject(mem_logAvgLum);
-	clReleaseKernel(k_globalTMO);
-	clReleaseKernel(k_computeLogAvgLum);
-	releaseCL();
 	return passed;
 }
+
+bool ReinhardGlobal::cleanupOpenCL() {
+	clReleaseMemObject(mems["input"]);
+	clReleaseMemObject(mems["output"]);
+	clReleaseMemObject(mems["Lwhite"]);
+	clReleaseMemObject(mems["logAvgLum"]);
+	clReleaseKernel(kernels["global_TMO"]);
+	clReleaseKernel(kernels["computeLogAvgLum"]);
+	releaseCL();
+	return true;
+}
+
 
 bool ReinhardGlobal::runReference(Image input, Image output) {
 

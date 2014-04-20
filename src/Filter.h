@@ -1,16 +1,15 @@
 #pragma once
 
-#include <cassert>
-#include <CL/cl.h>
+#include <map>
 #include <math.h>
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <iostream>
+#include <stdlib.h>
 #include <stdarg.h>
-
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_opengl.h>
+#include <CL/cl.h>
 #include <CL/cl_gl.h>
-#include <GL/glx.h>
-
 
 #define METHOD_REFERENCE  (1<<1)
 #define METHOD_HALIDE_CPU (1<<2)
@@ -82,6 +81,8 @@ public:
 	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
 	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
 	virtual bool runOpenCL(Image input, Image output, const Params& params) = 0;
+	virtual bool setupOpenCL(const Params& params, const int image_size) = 0;
+	virtual bool cleanupOpenCL() = 0;
 	virtual bool runReference(Image input, Image output) = 0;
 	virtual Image runFilter(Image input, Params params, unsigned int method);
 
@@ -98,7 +99,12 @@ protected:
 	cl_context m_clContext;
 	cl_command_queue m_queue;
 	cl_program m_program;
-	SDL_GLContext m_glContext;
+
+	std::map<std::string, cl_mem> mems;
+	std::map<std::string, cl_kernel> kernels;
+	std::map<std::string, size_t> local_sizes;
+	std::map<std::string, size_t> global_sizes;
+
 	bool initCL(const Params& params, const char *source, const char *options);
 	void releaseCL();
 };
@@ -119,9 +125,6 @@ float getValue(float* data, int x, int y, int width, int height);
 
 float getPixel(Image &image, int x, int y, int c);
 void setPixel(Image &image, int x, int y, int c, float value);
-
-Image readJPG(const char* filePath);
-void writeJPG(Image &image, const char* filePath);
 
 void toFloat(Image &input);
 

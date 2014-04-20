@@ -27,9 +27,18 @@ bool GradDom::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
+bool GradDom::setupOpenCL(const Params& params, const int image_size) {
+	return false;
+}
+
 bool GradDom::runOpenCL(Image input, Image output, const Params& params) {
 	return false;
 }
+
+bool GradDom::cleanupOpenCL() {
+	return false;
+}
+
 
 float* attenuate_func(float* lum, int width, int height) {
 	float beta = 0.85;

@@ -24,14 +24,18 @@ bool HistEq::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
-
+bool HistEq::setupOpenCL(const Params& params, const int image_size) {
 	char flags[1024];
-	sprintf(flags, "-cl-fast-relaxed-math -D HIST_SIZE=%d -D NUM_CHANNELS=%d -Dimage_size=%lu", PIXEL_RANGE, NUM_CHANNELS, input.width*input.height);
+	sprintf(flags, "-cl-fast-relaxed-math -D HIST_SIZE=%d -D NUM_CHANNELS=%d -Dimage_size=%d", PIXEL_RANGE, NUM_CHANNELS, image_size);
 
 	if (!initCL(params, histEq_kernel, flags)) {
 		return false;
 	}
+	return true;
+}
+
+
+bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
 
 	cl_int err;
 	cl_kernel k_partial_hist, k_hist, k_hist_cdf, k_hist_eq;
@@ -157,8 +161,14 @@ bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
 	clReleaseKernel(k_hist_cdf);
 	clReleaseKernel(k_hist_eq);
 	releaseCL();
+	return passed;
+}
+
+bool HistEq::cleanupOpenCL() {
+	releaseCL();
 	return true;
 }
+
 
 bool HistEq::runReference(Image input, Image output) {
 	// Check for cached result
@@ -197,9 +207,8 @@ bool HistEq::runReference(Image input, Image output) {
 			rgb.z = getPixel(input, x, y, 2);
 			hsv = RGBtoHSV(rgb);		//Convert to HSV to get Hue and Saturation
 
-			hsv.z = floor(
-				((hist_size-1)*(brightness_hist[(int)hsv.z] - brightness_hist[0]))
-				/(input.height*input.width - brightness_hist[0]));
+			hsv.z = ((hist_size-1)*(brightness_hist[(int)hsv.z] - brightness_hist[0]))
+						/(input.height*input.width - brightness_hist[0]);
 
 
 			rgb = HSVtoRGB(hsv);	//Convert back to RGB with the modified brightness for V

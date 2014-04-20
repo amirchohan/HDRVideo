@@ -7,9 +7,16 @@
 #include <map>
 #include <sys/types.h>
 #include <dirent.h>
+#include <exception>
+#include <stdexcept>
+
+#include "jpeglib.h"
+#include <GL/glx.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_opengl.h>
 
 #include "HistEq.h"
-#include "GammaAdj.h"
 #include "ReinhardLocal.h"
 #include "ReinhardGlobal.h"
 #include "GradDom.h"
@@ -23,7 +30,6 @@ struct _options_ {
 
 	_options_() {
 		filters["histEq"] = new HistEq();
-		filters["gammaAdj"] = new GammaAdj();
 		filters["reinhardGlobal"] = new ReinhardGlobal();
 		filters["reinhardLocal"] = new ReinhardLocal();
 		filters["gradDom"] = new GradDom();
@@ -45,6 +51,9 @@ int updateStatus(const char *format, va_list args);
 void checkError(const char* message, int err);
 bool is_dir(const char* path);
 bool hasEnding (string const &fullString, string const &ending);
+Image readJPG(const char* filePath);
+void writeJPG(Image &image, const char* filePath);
+
 
 int main(int argc, char *argv[]) {
 	Filter *filter = NULL;
@@ -184,6 +193,79 @@ void printUsage() {
 
 	cout << endl;
 }
+
+
+Image readJPG(const char* filePath) {
+	SDL_Surface *input = IMG_Load(filePath);
+	if (!input) throw std::runtime_error("Problem opening input file");
+ 
+ 	uchar* udata = (uchar*) input->pixels;
+  	float* data = (float*) calloc(4*(input->w * input->h), sizeof(float));
+
+	for (int y = 0; y < input->h; y++) {
+		for (int x = 0; x < input->w; x++) {
+			for (int j=0; j<3; j++) {
+ 		 		data[(x + y*input->w)*4 + j] = ((float)udata[(x + y*input->w)*3 + j])/255.f;
+ 		 	}
+ 		 	data[(x + y*input->w)*4 + 3] = 0.f;
+ 		 }
+ 	}
+
+ 	Image image = {data, input->w, input->h};
+
+ 	free(input);
+
+	return image;
+}
+
+
+void init_buffer(jpeg_compress_struct* cinfo) {}
+void term_buffer(jpeg_compress_struct* cinfo) {}
+boolean empty_buffer(jpeg_compress_struct* cinfo) {
+	return TRUE;
+}
+
+void writeJPG(Image &img, const char* filePath) {
+	FILE *outfile  = fopen(filePath, "wb");
+
+	if (!outfile) throw std::runtime_error("Problem opening output file");
+ 
+	struct jpeg_compress_struct cinfo;
+	struct jpeg_error_mgr       jerr;
+ 
+	cinfo.err = jpeg_std_error(&jerr);
+	jpeg_create_compress(&cinfo);
+	jpeg_stdio_dest(&cinfo, outfile);
+
+	cinfo.image_width      = img.width;
+	cinfo.image_height     = img.height;
+	cinfo.input_components = 3;
+	cinfo.in_color_space   = JCS_RGB;
+
+	jpeg_set_defaults(&cinfo);
+	/*set the quality [0..100]  */
+	jpeg_set_quality (&cinfo, 75, true);
+	jpeg_start_compress(&cinfo, true);
+
+	uchar* charImageData = (uchar*) calloc(3*img.width*img.height, sizeof(uchar));
+	for (int y = 0; y < img.height; y++) {
+		for (int x = 0; x < img.width; x++) {
+			for (int i=0; i < 3; i++)
+				charImageData[(x + y*img.width)*3 + i] = getPixel(img, x, y, i)*255.f;
+		}
+	}
+
+	JSAMPROW row_pointer;          /* pointer to a single row */
+ 	while (cinfo.next_scanline < cinfo.image_height) {
+		row_pointer = (JSAMPROW) &charImageData[cinfo.next_scanline*cinfo.input_components*img.width];
+		jpeg_write_scanlines(&cinfo, &row_pointer, 1);
+	} 
+	jpeg_finish_compress(&cinfo);
+}
+
+
+
+
 
 int updateStatus(const char *format, va_list args) {
 	vprintf(format, args);
