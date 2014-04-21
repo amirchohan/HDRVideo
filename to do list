@@ -1,47 +1,17 @@
 Project TODO list:
-	IO options:
-		Input:
-			- stored medium
-			- webcam
-		Output:
-			- store on drive
-			- display
+	Algorithms
+		ReinhardLocal OpenCL - OpenCL implementation will require GL mipmaps
+		GradDom Serial - some problem with getting k_alpha right
+		GradDom OpenCL - OpenCL implementation will require GL mipmaps
 
+	Android
+		Transfer camera feed to OpenCL
+		Render OpenCL output on display
 
-	Get single image working on the mobile phone
+	Thesis
+		Rewrite the background chapter to reflect the changes in the project
+			- Project is now about creating a GPU pipeline for real-time HDR filtering
 
-	Create a pipeline for real-time HDR videos	
-	
-	Implement the paper Dan Curran is using
-
-	Provide option of stitching again
-
-
-
-HistEq
-	- to compute histogram cdf currently just using a serial scan
-
-
-Thursday:
-	Get opencl implemetation for all the HDR filters working:
-		- HistEq
-		- Reinhard
-		- GradDom
-
-	Make the code as platform independent as possible and ready for integration with Android
-		- Check if CL-GL sharing enabled then display the results on screen, otherwise save them to device
-		- any other stuff which might come in way
-
-Friday:
-	Gradient Domain stuff serial code
-
-Saturday:
-	Gradient Domain OpenCL
-
-Sunday:
-	Rewrite the background chapter explaining to reflect the changes in the project
-		- Project is now about creating a GPU pipeline for real-time HDR filtering
-	Have a plan of writing the thesis over next few days.
 
 Monday-Wednesday:
 	Write the thesis

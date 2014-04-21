@@ -41,6 +41,7 @@ bool GradDom::cleanupOpenCL() {
 
 
 float* attenuate_func(float* lum, int width, int height) {
+	float adjust_alpha = 0.1f;
 	float beta = 0.85;
 	int k = 0;
 	int k_width = width;	//width and height of the level k in the pyramid
@@ -73,9 +74,7 @@ float* attenuate_func(float* lum, int width, int height) {
 		}
 		pyramid.push_back(k_gradient);
 		pyramid_sizes.push_back(std::pair< unsigned int, unsigned int >(k_width, k_height));
-		av_grads.push_back(k_av_grad/(k_width*k_height));
-
-		printf("%d, %d, %f\n", k_width, k_height, k_av_grad/(k_width*k_height));
+		av_grads.push_back(exp(k_av_grad/(k_width*k_height)));
 
 		k_lum = channel_mipmap(k_lum, k_width, k_height);
 	}
@@ -85,9 +84,11 @@ float* attenuate_func(float* lum, int width, int height) {
 	k_gradient = pyramid.back();
 	k_width = pyramid_sizes.back().first;
 	k_height = pyramid_sizes.back().second;
-	float k_alpha = av_grads.back();
+	float k_alpha = adjust_alpha*av_grads.back();
 	float* k_atten_func;
 	k--;
+	
+	printf("%d, %d, %f\n", k_width, k_height, k_alpha);
 
 	//attenuation function for the coarsest level
 	k_atten_func = (float*) calloc(k_width*k_height, sizeof(float));
@@ -110,10 +111,12 @@ float* attenuate_func(float* lum, int width, int height) {
 		k_gradient = pyramid.back();
 		k_width = pyramid_sizes.back().first;
 		k_height = pyramid_sizes.back().second;
-		float k_alpha = 0.1f*av_grads.back();
+		float k_alpha = adjust_alpha*av_grads.back();
 		float k_xy_scale_factor;
 		float k_xy_atten_func;
 		k--;
+
+		printf("%d, %d, %f\n", k_width, k_height, k_alpha);
 
 		//attenuation function for this level
 		k_atten_func = (float*) calloc(k_width*k_height, sizeof(float));
@@ -176,12 +179,11 @@ float* poissonSolver(float* lum, float* div_grad, int width, int height, float t
 		converged_pixels = 0;
 		for (int y = 0; y < height; y++) {
 			for (int x = 0; x < width; x++) {
-				int x_west  = clamp(x-1, 0, width-1);
-				int x_east  = clamp(x+1, 0, width-1);
-				int y_north = clamp(y-1, 0, height-1);
-				int y_south = clamp(y+1, 0, height-1);
 
-				float prev = prev_dr[x_west + y*width] + prev_dr[x_east + y*width] + prev_dr[x + y_north*width] + prev_dr[x + y_south*width];
+				float prev  = ((x-1 >=        0) ? prev_dr[x-1 +   y*width] : 0)
+							+ ((x+1 <=  width-1) ? prev_dr[x+1 +   y*width] : 0)
+							+ ((y-1 >=        0) ? prev_dr[x + (y-1)*width] : 0)
+							+ ((y+1 <= height-1) ? prev_dr[x + (y+1)*width] : 0);
 				//printf("%f\n", div_grad[x+y*width]);
 				new_dr[x + y*width] = 0.25f*(prev - div_grad[x + y*width]);
 				diff = new_dr[x + y*width] - prev_dr[x + y*width];
@@ -212,11 +214,11 @@ float* apply_constant(float* input_lum, float* output_lum, int width, int height
 	av_in_lum  /= width*height;
 	av_out_lum /= width*height;
 
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			output_lum[x+y*width] += av_out_lum - av_in_lum;
-		}
-	}
+	//for (int y = 0; y < height; y++) {
+	//	for (int x = 0; x < width; x++) {
+	//		output_lum[x+y*width] += av_out_lum - av_in_lum;
+	//	}
+	//}
 	return output_lum;
 }
 
@@ -225,7 +227,7 @@ bool GradDom::runReference(Image input, Image output) {
 
 	// Check for cached result
 	if (m_reference.data) {
-		memcpy(output.data, m_reference.data, output.width*output.height*4);
+		memcpy(output.data, m_reference.data, output.width*output.height*NUM_CHANNELS);
 		reportStatus("Finished reference (cached)");
 		return true;
 	}
@@ -304,8 +306,8 @@ bool GradDom::runReference(Image input, Image output) {
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new float[output.width*output.height*4];
-	memcpy(m_reference.data, output.data, output.width*output.height*4);
+	m_reference.data = new float[output.width*output.height*NUM_CHANNELS];
+	memcpy(m_reference.data, output.data, output.width*output.height*NUM_CHANNELS);
 
 	return true;
 }

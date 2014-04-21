@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <omp.h>
 
-#include <GLES/gl.h>
+//#include <GLES/gl.h>
 
 #include "ReinhardGlobal.h"
 #include "opencl/reinhardGlobal.h"
@@ -120,16 +120,16 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 
 	cl_int err;
 
-	GLuint textures[1];
-	glGenTextures(1, &textures[0]);
-	glBindTexture(GL_TEXTURE_2D, textures[0]);
-	//int height;
-	//glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, height);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, input.width, input.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
-	cl_mem hello = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, textures[0], &err);
-	CHECK_ERROR_OCL(err, "creating from GL texture", return false);
+	//GLuint textures[1];
+	//glGenTextures(1, &textures[0]);
+	//glBindTexture(GL_TEXTURE_2D, textures[0]);
+	////int height;
+	////glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, height);
+//
+//	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, input.width, input.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+//
+//	//cl_mem hello = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, textures[0], &err);
+	//CHECK_ERROR_OCL(err, "creating from GL texture", return false);
 
 
 	//transfer memory to the device
