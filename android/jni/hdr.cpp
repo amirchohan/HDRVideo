@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <jni.h>
+#include <android/bitmap.h>
 #include <android/native_window.h> // requires ndk r5 or newer
 #include <android/native_window_jni.h> // requires ndk r5 or newer
 
@@ -15,7 +16,7 @@
 #include "logger.h"
 #include "renderer.h"
 
-#define LOG_TAG "improsa"
+#define LOG_TAG "hdr"
 
 static ANativeWindow *window = 0;
 static Renderer *renderer = 0;
@@ -23,7 +24,7 @@ static Renderer *renderer = 0;
 
 JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_HDR_nativeOnStart(JNIEnv* jenv, jobject obj)
 {
-    LOG_INFO("nativeOnStart");
+    LOG_DEBUG("nativeOnStart");
     renderer = new Renderer();
     return;
 }

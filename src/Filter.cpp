@@ -33,7 +33,7 @@ const char* Filter::getName() const {
 }
 
 
-bool Filter::initCL(const Params& params, const char *source, const char *options) {
+bool Filter::initCL(cl_context_properties context_prop[], const Params& params, const char *source, const char *options) {
 	// Ensure no existing context
 	releaseCL();
 
@@ -79,7 +79,9 @@ bool Filter::initCL(const Params& params, const char *source, const char *option
 		0 
 	};*/
 
-	m_clContext = clCreateContext(NULL, 1, &m_device, NULL, NULL, &err);
+	if (context_prop != NULL) context_prop[5] = (cl_context_properties) platform;
+
+	m_clContext = clCreateContext(context_prop, 1, &m_device, NULL, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating context", return false);
 
 	m_queue = clCreateCommandQueue(m_clContext, m_device, 0, &err);
@@ -187,8 +189,9 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 			runHalideGPU(input, output, params);
 			break;
 		case METHOD_OPENCL:
-			setupOpenCL(params, input.width*input.height);
+			setupOpenCL(NULL, params, input.width*input.height);
 			runOpenCL(input, output, params);
+			cleanupOpenCL();
 			break;
 		default:
 			assert(false && "Invalid method.");

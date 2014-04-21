@@ -59,7 +59,7 @@ static GLubyte indices[] = {
 	3, 0, 1,    3, 1, 2
 };
 
-//using namespace improsa;
+using namespace hdr;
 
 Renderer::Renderer()
 	: _msg(MSG_NONE), _display(0), _surface(0), _context(0), _angle(0)
@@ -67,15 +67,17 @@ Renderer::Renderer()
 	status("Renderer instance created");
 	pthread_mutex_init(&_mutex, 0);
 
-	/*params.verify = false;
+	input = {NULL, 512, 512};
+	output = {NULL, 512, 512};
 
-	Image input = {NULL, 512, 512};
-	Image output = {NULL, 512, 512};
-
-	filter = new Bilateral();
+	filter = new ReinhardGlobal();
 	filter->setStatusCallback(updateStatus);
-	filter->setupOpenCL(params);
-	filter->runOpenCL(input, output, params, 0, 0);*/
+
+	cl_prop[0] = CL_GL_CONTEXT_KHR;
+	cl_prop[2] = CL_EGL_DISPLAY_KHR;
+	cl_prop[4] = CL_CONTEXT_PLATFORM;
+	cl_prop[6] = 0;
+
 	return;
 }
 
@@ -83,7 +85,7 @@ Renderer::~Renderer()
 {
 	status("Renderer instance destroyed");
 	pthread_mutex_destroy(&_mutex);
-	//filter->destroyOpenCL();
+	filter->cleanupOpenCL();
 	return;
 }
 
@@ -137,6 +139,8 @@ void Renderer::renderLoop()
 
 			case MSG_WINDOW_SET:
 				initialize();
+				filter->setupOpenCL(cl_prop, params, input.width*input.height);
+				filter->runOpenCL(input, output, params);
 				break;
 
 			case MSG_RENDER_LOOP_EXIT:
@@ -151,6 +155,7 @@ void Renderer::renderLoop()
 		
 		if (_display) {
 			drawFrame();
+			//filter->runOpenCL(input, output, params);
 			if (!eglSwapBuffers(_display, _surface)) {
 				LOG_ERROR("eglSwapBuffers() returned error %d", eglGetError());
 			}
@@ -237,6 +242,9 @@ bool Renderer::initialize()
 	_surface = surface;
 	_context = context;
 
+	cl_prop[1] = (cl_context_properties) _context;
+	cl_prop[3] = (cl_context_properties) _display;
+
 	glDisable(GL_DITHER);
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
 	glClearColor(0, 0, 0, 0);
@@ -257,6 +265,8 @@ bool Renderer::initialize()
 void Renderer::destroy() {
 	status("Destroying context");
 
+	filter->cleanupOpenCL();
+
 	eglMakeCurrent(_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	eglDestroyContext(_display, _context);
 	eglDestroySurface(_display, _surface);
@@ -265,7 +275,6 @@ void Renderer::destroy() {
 	_display = EGL_NO_DISPLAY;
 	_surface = EGL_NO_SURFACE;
 	_context = EGL_NO_CONTEXT;
-
 	return;
 }
 
@@ -288,9 +297,6 @@ void Renderer::drawFrame()
 	glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_BYTE, indices);
 
 	_angle += 1.2f;
-	//Image input = {NULL, 512, 512};
-	//Image output = {NULL, 512, 512};	
-	//filter->runOpenCL(input, output, params, 0, 0);
 }
 
 void* Renderer::threadStartCallback(void *myself)
@@ -312,14 +318,9 @@ int updateStatus(const char *format, va_list args)
 	char *msg = (char*)malloc(sz);
 	vsprintf(msg, format, args);
 
-	// Send message to log and GUI
-	//jstring jmsg = m_env->NewStringUTF(msg);
-	__android_log_print(ANDROID_LOG_DEBUG, "improsa", "%s", msg);
-	//m_env->CallVoidMethod(m_obj, m_updateStatus, jmsg);
-	//m_env->DeleteLocalRef(jmsg);
+	__android_log_print(ANDROID_LOG_DEBUG, "hdr", "%s", msg);
 
 	free(msg);
-
 	return 0;
 }
 

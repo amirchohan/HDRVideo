@@ -64,10 +64,12 @@ public:
 	typedef struct _Params_ {
 		cl_device_type type;
 		cl_uint platformIndex, deviceIndex;
+		bool verify;
 		_Params_() {
 			type = CL_DEVICE_TYPE_ALL;
 			platformIndex = 0;
 			deviceIndex = 0;
+			verify = false;
 		}
 	} Params;
 
@@ -80,8 +82,8 @@ public:
 
 	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
 	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
+	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) = 0;
 	virtual bool runOpenCL(Image input, Image output, const Params& params) = 0;
-	virtual bool setupOpenCL(const Params& params, const int image_size) = 0;
 	virtual bool cleanupOpenCL() = 0;
 	virtual bool runReference(Image input, Image output) = 0;
 	virtual Image runFilter(Image input, Params params, unsigned int method);
@@ -105,7 +107,7 @@ protected:
 	std::map<std::string, size_t> local_sizes;
 	std::map<std::string, size_t> global_sizes;
 
-	bool initCL(const Params& params, const char *source, const char *options);
+	bool initCL(cl_context_properties context_prop[], const Params& params, const char *source, const char *options);
 	void releaseCL();
 };
 

@@ -27,7 +27,7 @@ bool GradDom::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool GradDom::setupOpenCL(const Params& params, const int image_size) {
+bool GradDom::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) {
 	return false;
 }
 

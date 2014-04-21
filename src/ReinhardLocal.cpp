@@ -31,7 +31,7 @@ bool ReinhardLocal::runHalideGPU(Image input, Image output, const Params& params
 	return false;
 }
 
-bool ReinhardLocal::setupOpenCL(const Params& params, const int image_size) {
+bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) {
 	return false;
 }
 

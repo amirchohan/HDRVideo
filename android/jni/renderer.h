@@ -20,12 +20,21 @@
 #include <pthread.h>
 #include <EGL/egl.h> // requires ndk r5 or newer
 #include <GLES/gl.h>
+#include <CL/cl.h>
+#include <CL/cl_gl.h>
 
+#include "HistEq.h"
+#include "ReinhardLocal.h"
+#include "ReinhardGlobal.h"
+#include "GradDom.h"
 
-int updateStatus(const char *format, va_list args);
+using namespace hdr;
+
 
 // Variadic argument wrapper for updateStatus
 void status(const char *fmt, ...);
+int updateStatus(const char *format, va_list args);
+
 
 class Renderer {
 
@@ -42,8 +51,8 @@ public:
     
 private:
 
-    //Filter* filter;
-    //Filter::Params params;
+    Filter* filter;
+    Filter::Params params;
 
     enum RenderThreadMessage {
         MSG_NONE = 0,
@@ -62,7 +71,12 @@ private:
     EGLSurface _surface;
     EGLContext _context;
     GLfloat _angle;
+
+    Image input;
+    Image output;
     
+    cl_context_properties cl_prop[7];
+
     // RenderLoop is called in a rendering thread started in start() method
     // It creates rendering context and renders scene until stop() is called
     void renderLoop();

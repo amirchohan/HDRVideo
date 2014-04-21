@@ -24,11 +24,11 @@ bool HistEq::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool HistEq::setupOpenCL(const Params& params, const int image_size) {
+bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) {
 	char flags[1024];
 	sprintf(flags, "-cl-fast-relaxed-math -D HIST_SIZE=%d -D NUM_CHANNELS=%d -Dimage_size=%d", PIXEL_RANGE, NUM_CHANNELS, image_size);
 
-	if (!initCL(params, histEq_kernel, flags)) {
+	if (!initCL(context_prop, params, histEq_kernel, flags)) {
 		return false;
 	}
 	return true;

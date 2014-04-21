@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <omp.h>
 
+#include <GLES/gl.h>
+
 #include "ReinhardGlobal.h"
 #include "opencl/reinhardGlobal.h"
 #if ENABLE_HALIDE
@@ -30,7 +32,7 @@ bool ReinhardGlobal::runHalideGPU(Image input, Image output, const Params& param
 	return false;
 }
 
-bool ReinhardGlobal::setupOpenCL(const Params& params, const int image_size) {
+bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) {
 
 	//some parameters
 	float key = 0.18f;
@@ -39,7 +41,7 @@ bool ReinhardGlobal::setupOpenCL(const Params& params, const int image_size) {
 	char flags[1024];
 	sprintf(flags, "-cl-fast-relaxed-math -D NUM_CHANNELS=%d -Dimage_size=%d", NUM_CHANNELS, image_size);
 
-	if (!initCL(params, reinhardGlobal_kernel, flags)) {
+	if (!initCL(context_prop, params, reinhardGlobal_kernel, flags)) {
 		return false;
 	}
 
@@ -118,6 +120,15 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 
 	cl_int err;
 
+	GLuint textures[1];
+	glGenTextures(1, &textures[0]);
+	glBindTexture(GL_TEXTURE_2D, textures[0]);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, input.width, input.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+	cl_mem hello = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, textures[0], &err);
+	CHECK_ERROR_OCL(err, "creating from GL texture", return false);
+
+
 	//transfer memory to the device
 	err = clEnqueueWriteBuffer(m_queue, mems["input"], CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
@@ -148,6 +159,8 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 		"Finished in %lf ms (verification %s)",
 		runTime*1000, passed ? "passed" : "failed");
 
+
+	glDeleteTextures(1, &textures[0]);
 
 	return passed;
 }
