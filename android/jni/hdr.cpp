@@ -29,10 +29,10 @@ JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_HDR_nativeOnStart(JNIEnv* jenv, 
     return;
 }
 
-JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_HDR_nativeOnResume(JNIEnv* jenv, jobject obj)
+JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_HDR_nativeOnResume(JNIEnv* jenv, jobject obj, jint cameraTexture, jint width, jint height)
 {
     LOG_INFO("nativeOnResume");
-    renderer->start();
+    renderer->start(cameraTexture, width, height);
     return;
 }
 

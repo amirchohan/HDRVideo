@@ -44,7 +44,7 @@ public:
 
     // Following methods can be called from any thread.
     // They send message to render thread which executes required actions.
-    void start();
+    void start(int texture, int width, int height);
     void stop();
     void setWindow(ANativeWindow* window);
     
@@ -75,6 +75,8 @@ private:
     Image input;
     Image output;
     
+    int cameraTexture;
+
     cl_context_properties cl_prop[7];
 
     // RenderLoop is called in a rendering thread started in start() method

@@ -67,17 +67,8 @@ Renderer::Renderer()
 	status("Renderer instance created");
 	pthread_mutex_init(&_mutex, 0);
 
-	input = {NULL, 512, 512};
-	output = {NULL, 512, 512};
-
 	filter = new ReinhardGlobal();
 	filter->setStatusCallback(updateStatus);
-
-	cl_prop[0] = CL_GL_CONTEXT_KHR;
-	cl_prop[2] = CL_EGL_DISPLAY_KHR;
-	cl_prop[4] = CL_CONTEXT_PLATFORM;
-	cl_prop[6] = 0;
-
 	return;
 }
 
@@ -89,9 +80,19 @@ Renderer::~Renderer()
 	return;
 }
 
-void Renderer::start()
+void Renderer::start(int texture, int width, int height)
 {
 	status("Creating renderer thread");
+	cameraTexture = texture;
+
+	input = {NULL, width, height};
+	output = {NULL, width, height};
+
+	cl_prop[0] = CL_GL_CONTEXT_KHR;
+	cl_prop[2] = CL_EGL_DISPLAY_KHR;
+	cl_prop[4] = CL_CONTEXT_PLATFORM;
+	cl_prop[6] = 0;
+
 	pthread_create(&_threadId, 0, threadStartCallback, this);
 	return;
 }
@@ -140,6 +141,7 @@ void Renderer::renderLoop()
 			case MSG_WINDOW_SET:
 				initialize();
 				filter->setupOpenCL(cl_prop, params, input.width*input.height);
+				params.deviceIndex = cameraTexture;		//just hardcoding it in params for now, so don't have to change the code
 				filter->runOpenCL(input, output, params);
 				break;
 
