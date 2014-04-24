@@ -2,5 +2,8 @@
 *.d
 *.o
 *.pyc
+*.apk
+*.so
 linux/hdr
-output/*
+output_images/*
+android/bin/dexedLibs/*.jar

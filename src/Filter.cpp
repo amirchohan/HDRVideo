@@ -173,7 +173,7 @@ bool Filter::verify(Image input, Image output, float tolerance) {
 }
 
 Image Filter::runFilter(Image input, Params params, unsigned int method) {
-	Image output = {(float*) calloc(input.width*input.height*4, sizeof(float)), input.width, input.height};
+	Image output = {(float*) calloc(input.width*input.height*NUM_CHANNELS, sizeof(float)), input.width, input.height};
 
 	std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
 
@@ -190,7 +190,7 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 			break;
 		case METHOD_OPENCL:
 			setupOpenCL(NULL, params, input.width*input.height);
-			runOpenCL(input, output, params);
+			runOpenCL(input, output);
 			cleanupOpenCL();
 			break;
 		default:
@@ -286,9 +286,9 @@ float getPixelLuminance(float3 pixel_val) {
 
 
 float3 RGBtoHSV(float3 rgb) {
-	float r = rgb.x*PIXEL_RANGE;
-	float g = rgb.y*PIXEL_RANGE;
-	float b = rgb.z*PIXEL_RANGE;
+	float r = rgb.x*(PIXEL_RANGE-1);
+	float g = rgb.y*(PIXEL_RANGE-1);
+	float b = rgb.z*(PIXEL_RANGE-1);
 	float min, max, delta;
 	min = std::min(std::min(r, g), b);
 	max = std::max(std::max(r, g), b);
@@ -322,7 +322,7 @@ float3 HSVtoRGB(float3 hsv) {
 	float f, p, q, t;
 	float3 rgb;
 	if( s == 0 ) { // achromatic (grey)
-		rgb.x = rgb.y = rgb.z = v/PIXEL_RANGE;
+		rgb.x = rgb.y = rgb.z = v/(PIXEL_RANGE-1);
 		return rgb;
 	}
 	h /= 60;			// sector 0 to 5
@@ -363,9 +363,9 @@ float3 HSVtoRGB(float3 hsv) {
 			rgb.z = q;
 			break;
 	}
-	rgb.x = rgb.x/PIXEL_RANGE;
-	rgb.y = rgb.y/PIXEL_RANGE;
-	rgb.z = rgb.z/PIXEL_RANGE;
+	rgb.x = rgb.x/(PIXEL_RANGE-1);
+	rgb.y = rgb.y/(PIXEL_RANGE-1);
+	rgb.z = rgb.z/(PIXEL_RANGE-1);
 	return rgb;
 }
 

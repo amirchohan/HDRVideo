@@ -31,40 +31,32 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 	if (!initCL(context_prop, params, histEq_kernel, flags)) {
 		return false;
 	}
-	return true;
-}
-
-
-bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
-
-	cl_int err;
-	cl_kernel k_partial_hist, k_hist, k_hist_cdf, k_hist_eq;
-	cl_mem mem_image, mem_partial_hist, mem_hist;
-
 
 	/////////////////////////////////////////////////////////////////kernels
+	cl_int err;
+
 
 	//compute partial histogram
-	k_partial_hist = clCreateKernel(m_program, "partial_hist", &err);
+	kernels["partial_hist"] = clCreateKernel(m_program, "partial_hist", &err);
 	CHECK_ERROR_OCL(err, "creating partial_hist kernel", return false);
 
 	//merge partial histograms
-	k_hist = clCreateKernel(m_program, "merge_hist", &err);
+	kernels["hist"] = clCreateKernel(m_program, "merge_hist", &err);
 	CHECK_ERROR_OCL(err, "creating merge_hist kernel", return false);
 
 	//compute cdf of brightness histogram
-	k_hist_cdf = clCreateKernel(m_program, "hist_cdf", &err);
+	kernels["hist_cdf"] = clCreateKernel(m_program, "hist_cdf", &err);
 	CHECK_ERROR_OCL(err, "creating hist_cdf kernel", return false);
 
 	//perfrom histogram equalisation to the original image
-	k_hist_eq = clCreateKernel(m_program, "histogram_equalisation", &err);
+	kernels["hist_eq"] = clCreateKernel(m_program, "histogram_equalisation", &err);
 	CHECK_ERROR_OCL(err, "creating histogram_equalisation kernel", return false);
 
 
 
 	//get info to set the global_reduc and local_reduc according to the GPU specs
 	size_t preferred_wg_size;	//workgroup size should be a multiple of this
-	err = clGetKernelWorkGroupInfo (k_partial_hist, m_device,
+	err = clGetKernelWorkGroupInfo (kernels["partial_hist"], m_device,
 		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &preferred_wg_size, NULL);
 	CHECK_ERROR_OCL(err, "getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE", return false);
 
@@ -78,71 +70,94 @@ bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
 	const size_t merge_hist_local = PIXEL_RANGE;
 	const size_t merge_hist_global = PIXEL_RANGE*merge_hist_local;
 
-	const size_t hist_cdf_local = PIXEL_RANGE;
-	const size_t hist_cdf_global = PIXEL_RANGE;
-
 	const size_t local = preferred_wg_size;
-	const size_t global = ceil((float)input.width*input.height/(float)local) * local;
+	const size_t global = ceil((float)image_size/(float)local) * local;
+
+	local_sizes["reduc"]  = local_reduc;
+	global_sizes["reduc"] = global_reduc;
+
+	local_sizes["merge_hist"] = merge_hist_local;
+	global_sizes["merge_hist"] = merge_hist_global;
+
+	local_sizes["hist_cdf"] = PIXEL_RANGE;
+	global_sizes["hist_cdf"] = PIXEL_RANGE;
+
+	local_sizes["normal"] = local;
+	global_sizes["normal"] = global;
 
 
 	/////////////////////////////////////////////////////////////////allocating memory
 
-	mem_partial_hist = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*PIXEL_RANGE*num_wg_reduc, NULL, &err);
+	mems["partial_hist"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*PIXEL_RANGE*num_wg_reduc, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 
-	mem_hist = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*PIXEL_RANGE, NULL, &err);
+	mems["hist"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*PIXEL_RANGE, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 
-	mem_image = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*input.width*input.height*NUM_CHANNELS, NULL, &err);
+	mems["image"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*image_size*NUM_CHANNELS, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
 
 
 	/////////////////////////////////////////////////////////////////setting kernel arguements
 
-	err  = clSetKernelArg(k_partial_hist, 0, sizeof(cl_mem), &mem_image);
-	err |= clSetKernelArg(k_partial_hist, 1, sizeof(cl_mem), &mem_partial_hist);
+	err  = clSetKernelArg(kernels["partial_hist"], 0, sizeof(cl_mem), &mems["image"]);
+	err |= clSetKernelArg(kernels["partial_hist"], 1, sizeof(cl_mem), &mems["partial_hist"]);
 	CHECK_ERROR_OCL(err, "setting partial_hist arguments", return false);
 
-	err  = clSetKernelArg(k_hist, 0, sizeof(cl_mem), &mem_partial_hist);
-	err |= clSetKernelArg(k_hist, 1, sizeof(cl_mem), &mem_hist);
-	err |= clSetKernelArg(k_hist, 2, sizeof(unsigned int)*merge_hist_local, NULL);
-	err |= clSetKernelArg(k_hist, 3, sizeof(unsigned int), &num_wg_reduc);
+	err  = clSetKernelArg(kernels["hist"], 0, sizeof(cl_mem), &mems["partial_hist"]);
+	err |= clSetKernelArg(kernels["hist"], 1, sizeof(cl_mem), &mems["hist"]);
+	err |= clSetKernelArg(kernels["hist"], 2, sizeof(unsigned int)*local_sizes["merge_hist"], NULL);
+	err |= clSetKernelArg(kernels["hist"], 3, sizeof(unsigned int), &num_wg_reduc);
 	CHECK_ERROR_OCL(err, "setting merge_hist arguments", return false);
 
-	err = clSetKernelArg(k_hist_cdf, 0, sizeof(cl_mem), &mem_hist);
+	err = clSetKernelArg(kernels["hist_cdf"], 0, sizeof(cl_mem), &mems["hist"]);
 	CHECK_ERROR_OCL(err, "setting hist_cdf arguments", return false);
 
-	err  = clSetKernelArg(k_hist_eq, 0, sizeof(cl_mem), &mem_image);
-	err |= clSetKernelArg(k_hist_eq, 1, sizeof(cl_mem), &mem_hist);
+	err  = clSetKernelArg(kernels["hist_eq"], 0, sizeof(cl_mem), &mems["image"]);
+	err |= clSetKernelArg(kernels["hist_eq"], 1, sizeof(cl_mem), &mems["hist"]);
 	CHECK_ERROR_OCL(err, "setting histogram_equalisation arguments", return false);
 
+	return true;
+}
 
-	//transfer memory to the device
-	err = clEnqueueWriteBuffer(m_queue, mem_image, CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "writing image memory", return false);
-
-
+double HistEq::runCLKernels() {
+	cl_int err;
 	//let it begin
 	double start = omp_get_wtime();
 
-	err = clEnqueueNDRangeKernel(m_queue, k_partial_hist, 1, NULL, &global_reduc, &local_reduc, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["partial_hist"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing partial_hist kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, k_hist, 1, NULL, &merge_hist_global, &merge_hist_local, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist"], 1, NULL, &global_sizes["merge_hist"], &local_sizes["merge_hist"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing merge_hist kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, k_hist_cdf, 1, NULL, &hist_cdf_global, &hist_cdf_local, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_cdf"], 1, NULL, &global_sizes["hist_cdf"], &local_sizes["hist_cdf"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing hist_cdf kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, k_hist_eq, 1, NULL, &global, &local, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_eq"], 1, NULL, &global_sizes["normal"], &local_sizes["normal"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing histogram_equalisation kernel", return false);
 
 	err = clFinish(m_queue);
 	CHECK_ERROR_OCL(err, "running kernels", return false);
-	double runTime = omp_get_wtime() - start;
+	return omp_get_wtime() - start;
+}
 
-	err = clEnqueueReadBuffer(m_queue, mem_image, CL_TRUE, 0, sizeof(float)*output.width*output.height*NUM_CHANNELS, output.data, 0, NULL, NULL );
+bool HistEq::runOpenCL(int gl_texture) {
+	return false;
+}
+
+bool HistEq::runOpenCL(Image input, Image output) {
+
+	cl_int err;
+
+	//transfer memory to the device
+	err = clEnqueueWriteBuffer(m_queue, mems["image"], CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "writing image memory", return false);
+
+	double runTime = runCLKernels();
+
+	err = clEnqueueReadBuffer(m_queue, mems["image"], CL_TRUE, 0, sizeof(float)*output.width*output.height*NUM_CHANNELS, output.data, 0, NULL, NULL );
 	CHECK_ERROR_OCL(err, "reading image memory", return false);
 
 	reportStatus("Finished OpenCL kernel");
@@ -153,18 +168,17 @@ bool HistEq::runOpenCL(Image input, Image output, const Params& params) {
 		"Finished in %lf ms (verification %s)",
 		runTime*1000, passed ? "passed" : "failed");
 
-	clReleaseMemObject(mem_image);
-	clReleaseMemObject(mem_hist);
-	clReleaseMemObject(mem_partial_hist);
-	clReleaseKernel(k_partial_hist);
-	clReleaseKernel(k_hist);
-	clReleaseKernel(k_hist_cdf);
-	clReleaseKernel(k_hist_eq);
-	releaseCL();
 	return passed;
 }
 
 bool HistEq::cleanupOpenCL() {
+	clReleaseMemObject(mems["image"]);
+	clReleaseMemObject(mems["hist"]);
+	clReleaseMemObject(mems["partial_hist"]);
+	clReleaseKernel(kernels["partial_hist"]);
+	clReleaseKernel(kernels["hist"]);
+	clReleaseKernel(kernels["hist_cdf"]);
+	clReleaseKernel(kernels["hist_eq"]);
 	releaseCL();
 	return true;
 }
@@ -189,7 +203,7 @@ bool HistEq::runReference(Image input, Image output) {
 			red   = getPixel(input, x, y, 0);
 			green = getPixel(input, x, y, 1);
 			blue  = getPixel(input, x, y, 2);
-			brightness = std::max(std::max(red, green), blue)*hist_size;
+			brightness = std::max(std::max(red, green), blue)*(hist_size-1);
 			brightness_hist[brightness] ++;
 		}
 	}
@@ -209,7 +223,6 @@ bool HistEq::runReference(Image input, Image output) {
 
 			hsv.z = ((hist_size-1)*(brightness_hist[(int)hsv.z] - brightness_hist[0]))
 						/(input.height*input.width - brightness_hist[0]);
-
 
 			rgb = HSVtoRGB(hsv);	//Convert back to RGB with the modified brightness for V
 			setPixel(output, x, y, 0, rgb.x);

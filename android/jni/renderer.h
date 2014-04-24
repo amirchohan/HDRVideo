@@ -82,7 +82,8 @@ private:
     // RenderLoop is called in a rendering thread started in start() method
     // It creates rendering context and renders scene until stop() is called
     void renderLoop();
-    
+    void getImageTexture();
+
     bool initialize();
     void destroy();
 

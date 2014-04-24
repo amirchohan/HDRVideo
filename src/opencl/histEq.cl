@@ -17,7 +17,7 @@ kernel void partial_hist(__global float* image, __global uint* partial_histogram
 
 	int brightness;
 	for (int i = get_global_id(0); i < image_size; i += global_size) {
-		brightness = max(max(image[i*NUM_CHANNELS + 0], image[i*NUM_CHANNELS + 1]), image[i*NUM_CHANNELS + 2])*HIST_SIZE;
+		brightness = max(max(image[i*NUM_CHANNELS + 0], image[i*NUM_CHANNELS + 1]), image[i*NUM_CHANNELS + 2])*(HIST_SIZE-1);
 		barrier(CLK_LOCAL_MEM_FENCE);
 		atomic_inc(&l_hist[brightness]);
 	}
@@ -76,9 +76,9 @@ kernel void histogram_equalisation( __global float* image, __global uint* bright
 }
 
 float3 RGBtoHSV(float3 rgb) {
-	float r = rgb.x*HIST_SIZE;
-	float g = rgb.y*HIST_SIZE;
-	float b = rgb.z*HIST_SIZE;
+	float r = rgb.x*(HIST_SIZE-1);
+	float g = rgb.y*(HIST_SIZE-1);
+	float b = rgb.z*(HIST_SIZE-1);
 	float rgb_min, rgb_max, delta;
 	rgb_min = min(min(r, g), b);
 	rgb_max = clamp(max(max(r, g), b), 0.f, HIST_SIZE*1.f-1);
@@ -97,7 +97,7 @@ float3 RGBtoHSV(float3 rgb) {
 	//Hue
 	if(r == rgb_max) 		hsv.x = (g-b)/delta;
 	else if(g == rgb_max) 	hsv.x = (b-r)/delta + 2;
-	else 				hsv.x = (r-g)/delta + 4;
+	else 			 		hsv.x = (r-g)/delta + 4;
 	hsv.x *= 60;				
 	if( hsv.x < 0 ) hsv.x += 360;
 
@@ -112,7 +112,7 @@ float3 HSVtoRGB(float3 hsv) {
 	float f, p, q, t;
 	float3 rgb;
 	if( s == 0 ) { // achromatic (grey)
-		rgb.x = rgb.y = rgb.z = v/HIST_SIZE;
+		rgb.x = rgb.y = rgb.z = v/(HIST_SIZE-1);
 		return rgb;
 	}
 	h /= 60;			// sector 0 to 5
@@ -153,8 +153,8 @@ float3 HSVtoRGB(float3 hsv) {
 			rgb.z = q;
 			break;
 	}
-	rgb.x = rgb.x/HIST_SIZE;
-	rgb.y = rgb.y/HIST_SIZE;
-	rgb.z = rgb.z/HIST_SIZE;
+	rgb.x = rgb.x/(HIST_SIZE-1);
+	rgb.y = rgb.y/(HIST_SIZE-1);
+	rgb.z = rgb.z/(HIST_SIZE-1);
 	return rgb;
 }

@@ -115,11 +115,23 @@ bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Par
 	return true;
 }
 
-
-bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) {
+double ReinhardGlobal::runCLKernels() {
+	double start = omp_get_wtime();
 
 	cl_int err;
+	err = clEnqueueNDRangeKernel(m_queue, kernels["computeLogAvgLum"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "enqueuing computeLogAvgLum kernel", return false);
 
+	err = clEnqueueNDRangeKernel(m_queue, kernels["global_TMO"], 1, NULL, &global_sizes["normal"], &local_sizes["normal"], 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "enqueuing globalTMO kernel", return false);
+
+	err = clFinish(m_queue);
+	CHECK_ERROR_OCL(err, "running kernels", return false);
+	return omp_get_wtime() - start;	
+}
+
+
+bool ReinhardGlobal::runOpenCL(int gl_texture) {
 	//GLuint textures[1];
 	//glGenTextures(1, &textures[0]);
 	//glBindTexture(GL_TEXTURE_2D, textures[0]);
@@ -132,24 +144,23 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 	//CHECK_ERROR_OCL(err, "creating from GL texture", return false);
 
 
+	//glDeleteTextures(1, &textures[0]);
+
+	return false;
+}
+
+
+//when image data is provided in form of Image data structure as opposed to an OpenGL texture
+bool ReinhardGlobal::runOpenCL(Image input, Image output) {
+
+	cl_int err;
+
 	//transfer memory to the device
 	err = clEnqueueWriteBuffer(m_queue, mems["input"], CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
-
 	//let it begin
-	double start = omp_get_wtime();
-
-	err = clEnqueueNDRangeKernel(m_queue, kernels["computeLogAvgLum"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "enqueuing computeLogAvgLum kernel", return false);
-
-	err = clEnqueueNDRangeKernel(m_queue, kernels["global_TMO"], 1, NULL, &global_sizes["normal"], &local_sizes["normal"], 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "enqueuing globalTMO kernel", return false);
-
-	err = clFinish(m_queue);
-	CHECK_ERROR_OCL(err, "running kernels", return false);
-	double runTime = omp_get_wtime() - start;
-
+	double runTime = runCLKernels();
 
 	//read results back
 	err = clEnqueueReadBuffer(m_queue, mems["output"], CL_TRUE, 0,	sizeof(float)*output.width*output.height*NUM_CHANNELS, output.data, 0, NULL, NULL );
@@ -162,11 +173,9 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output, const Params& params) 
 		"Finished in %lf ms (verification %s)",
 		runTime*1000, passed ? "passed" : "failed");
 
-
-	//glDeleteTextures(1, &textures[0]);
-
 	return passed;
 }
+
 
 bool ReinhardGlobal::cleanupOpenCL() {
 	clReleaseMemObject(mems["input"]);

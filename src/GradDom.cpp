@@ -31,7 +31,15 @@ bool GradDom::setupOpenCL(cl_context_properties context_prop[], const Params& pa
 	return false;
 }
 
-bool GradDom::runOpenCL(Image input, Image output, const Params& params) {
+double GradDom::runCLKernels() {
+	return 0.0;	
+}
+
+bool GradDom::runOpenCL(int gl_texture) {
+	return false;
+}
+
+bool GradDom::runOpenCL(Image input, Image output) {
 	return false;
 }
 
@@ -174,7 +182,7 @@ float* poissonSolver(float* lum, float* div_grad, int width, int height, float t
 
 	float diff;
 	int converged_pixels = 0;
-	while (converged_pixels < width*height) {
+	while (converged_pixels < 0.5*width*height) {
 		diff = 0;
 		converged_pixels = 0;
 		for (int y = 0; y < height; y++) {
@@ -234,7 +242,7 @@ bool GradDom::runReference(Image input, Image output) {
 
 	reportStatus("Running reference");
 
-	float sat = 1.f;
+	float sat = 0.5f;
 
 	//computing logarithmic luminace of the image
 	float* lum = (float*) calloc(input.width * input.height, sizeof(float));	//logarithm luminance

@@ -22,6 +22,9 @@
 #include <android/native_window.h> // requires ndk r5 or newer
 #include <EGL/egl.h> // requires ndk r5 or newer
 #include <GLES/gl.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+
 
 #include "logger.h"
 #include "renderer.h"
@@ -123,7 +126,15 @@ void Renderer::setWindow(ANativeWindow *window)
 	return;
 }
 
+void Renderer::getImageTexture() {
+	GLuint framebuffer;
+	glGenFramebuffers(1, &framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
+	//Attach 2D texture to this FBO
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cameraTexture, 0);
+	status("glFramebufferTexture2D() returned error %d", glGetError());
+}
 
 void Renderer::renderLoop()
 {
@@ -141,8 +152,9 @@ void Renderer::renderLoop()
 			case MSG_WINDOW_SET:
 				initialize();
 				filter->setupOpenCL(cl_prop, params, input.width*input.height);
+				//getImageTexture();
 				params.deviceIndex = cameraTexture;		//just hardcoding it in params for now, so don't have to change the code
-				filter->runOpenCL(input, output, params);
+				filter->runOpenCL(input, output);
 				break;
 
 			case MSG_RENDER_LOOP_EXIT:

@@ -35,8 +35,15 @@ bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Para
 	return false;
 }
 
+double ReinhardLocal::runCLKernels() {
+	return 0.0;	
+}
 
-bool ReinhardLocal::runOpenCL(Image input, Image output, const Params& params) {
+bool ReinhardLocal::runOpenCL(int gl_texture) {
+	return false;
+}
+
+bool ReinhardLocal::runOpenCL(Image input, Image output) {
 
 	//some parameters
 	/*float key = 0.36f;

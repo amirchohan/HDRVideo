@@ -83,7 +83,9 @@ public:
 	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
 	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
 	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) = 0;
-	virtual bool runOpenCL(Image input, Image output, const Params& params) = 0;
+	virtual double runCLKernels() = 0;
+	virtual bool runOpenCL(int gl_texture) = 0;
+	virtual bool runOpenCL(Image input, Image output) = 0;
 	virtual bool cleanupOpenCL() = 0;
 	virtual bool runReference(Image input, Image output) = 0;
 	virtual Image runFilter(Image input, Params params, unsigned int method);
