@@ -1,10 +1,12 @@
 package com.uob.achohan.hdr;
 
 import java.io.IOException;
+import java.util.List;
 
 import android.app.Activity;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
+import android.hardware.Camera.Size;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.os.Bundle;
@@ -68,11 +70,27 @@ public class HDR extends Activity implements SurfaceHolder.Callback, SurfaceText
 	@Override
 	protected void onStop() {
 		super.onStop();
-		Log.i(TAG, "onStop()");
+		Log.d(TAG, "onStop()");
 		nativeOnStop();
+		close();
 	}
 
-	public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
+
+	public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+		GLES20.glViewport( 0, 0, width, height );
+		Camera.Parameters param = mCamera.getParameters();
+		List<Size> psize = param.getSupportedPreviewSizes();
+		if ( psize.size() > 0 ) {
+			int i;
+			for ( i = 0; i < psize.size(); i++ ) {
+				if ( psize.get(i).width < width || psize.get(i).height < height ) break;
+			}
+			if ( i > 0 ) i--;
+			param.setPreviewSize(psize.get(i).width, psize.get(i).height);
+		}
+		param.set("orientation", "landscape");
+		mCamera.setParameters ( param );
+		mCamera.startPreview();
 		nativeSetSurface(holder.getSurface());
 	}
 
@@ -87,7 +105,10 @@ public class HDR extends Activity implements SurfaceHolder.Callback, SurfaceText
 		}
 		catch ( IOException ioe ) {
 		}
-		Camera.Size dim = mCamera.getParameters().getPreviewSize();		
+
+		GLES20.glClearColor (1.0f, 1.0f, 0.0f, 1.0f);
+
+		Camera.Size dim = mCamera.getParameters().getPreviewSize();
 		nativeOnResume(cameraTexture[0], dim.width, dim.height);
 	}
 
@@ -103,12 +124,24 @@ public class HDR extends Activity implements SurfaceHolder.Callback, SurfaceText
 		cameraTexture = new int[1];
 		cameraTexture[0] = 1;	//so that when it recreates the texture, the id doesn't change because it has already been passed to OpenCL
 		GLES20.glGenTextures(1, cameraTexture, 0);
-		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, cameraTexture[0]);
-		//GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-		//GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-		//GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
-		//GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
+		GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, cameraTexture[0]);
+		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
+		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
 		Log.d(TAG, "cameraTexture initialised");
+	}
+
+
+	private void deleteTex() {
+		GLES20.glDeleteTextures(1, cameraTexture, 0);
+	}
+
+	public void close() {
+		mSTexture.release();
+		//mCamera.stopPreview();
+		mCamera.release();
+		deleteTex();
 	}
 
 	public static native void nativeOnStart();
@@ -126,5 +159,4 @@ public class HDR extends Activity implements SurfaceHolder.Callback, SurfaceText
 		// TODO Auto-generated method stub
 		
 	}
-
 }

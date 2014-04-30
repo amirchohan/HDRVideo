@@ -127,13 +127,13 @@ void Renderer::setWindow(ANativeWindow *window)
 }
 
 void Renderer::getImageTexture() {
-	GLuint framebuffer;
-	glGenFramebuffers(1, &framebuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-
-	//Attach 2D texture to this FBO
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cameraTexture, 0);
-	status("glFramebufferTexture2D() returned error %d", glGetError());
+	//GLuint framebuffer;
+	//glGenFramebuffers(1, &framebuffer);
+	//glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+//
+//	////Attach 2D texture to this FBO
+//	//glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cameraTexture, 0);
+	//status("glFramebufferTexture2D() returned error %d", glGetError());
 }
 
 void Renderer::renderLoop()
@@ -152,7 +152,6 @@ void Renderer::renderLoop()
 			case MSG_WINDOW_SET:
 				initialize();
 				filter->setupOpenCL(cl_prop, params, input.width*input.height);
-				//getImageTexture();
 				params.deviceIndex = cameraTexture;		//just hardcoding it in params for now, so don't have to change the code
 				filter->runOpenCL(input, output);
 				break;

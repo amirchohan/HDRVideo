@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <omp.h>
 
-//#include <GLES/gl.h>
+#include <GLES/gl.h>
 
 #include "ReinhardGlobal.h"
 #include "opencl/reinhardGlobal.h"
