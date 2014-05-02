@@ -11,6 +11,9 @@
 #include <CL/cl.h>
 #include <CL/cl_gl.h>
 
+#include <GLES/gl.h>
+
+
 #define METHOD_REFERENCE  (1<<1)
 #define METHOD_HALIDE_CPU (1<<2)
 #define METHOD_HALIDE_GPU (1<<3)

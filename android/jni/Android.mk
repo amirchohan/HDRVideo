@@ -18,7 +18,6 @@ LOCAL_CFLAGS += -fopenmp
 LOCAL_LDFLAGS += -fopenmp
 LOCAL_MODULE    := hdr
 LOCAL_SRC_FILES := hdr.cpp \
-	renderer.cpp \
 	$(SRC_PATH)/Filter.cpp \
 	$(SRC_PATH)/HistEq.cpp \
 	$(SRC_PATH)/GradDom.cpp \

@@ -144,11 +144,17 @@ double HistEq::runCLKernels() {
 }
 
 bool HistEq::runOpenCL(int gl_texture) {
+	cl_int err;
+
+	cl_mem hello = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gl_texture, &err);
+	CHECK_ERROR_OCL(err, "creating from GL texture", return false);
+
+	reportStatus("gl texture created");
+
 	return false;
 }
 
 bool HistEq::runOpenCL(Image input, Image output) {
-
 	cl_int err;
 
 	//transfer memory to the device
