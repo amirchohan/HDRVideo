@@ -19,7 +19,7 @@
 #define LOG_TAG "hdr"
 
 
-JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint image_size) {
+JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint width, jint height) {
 	filter = new HistEq();
 	filter->setStatusCallback(updateStatus);
 
@@ -41,7 +41,7 @@ JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv
 	cl_prop[4] = CL_CONTEXT_PLATFORM;
 	cl_prop[6] = 0;
 
-	filter->setupOpenCL(cl_prop, params, image_size);
+	filter->setupOpenCL(cl_prop, params, width, height);
 
 	return;
 }

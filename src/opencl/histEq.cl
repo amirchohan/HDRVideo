@@ -1,10 +1,26 @@
 
 
-float3 RGBtoHSV(float3 rgb);
-float3 HSVtoRGB(float3 hsv);
+float3 RGBtoHSV(uint4 rgb);
+uint4 HSVtoRGB(float3 hsv);
+
+const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
+
+kernel void transfer_data(read_only image2d_t input_image, __global uchar* image) {
+	int2 pos;
+	uint4 pixel;
+	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
+			pixel = read_imageui(input_image, sampler, pos);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 0] = pixel.x;
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 1] = pixel.y;
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 2] = pixel.z;			
+		}
+	}
+}
+
 
 //computes the histogram for brightness
-kernel void partial_hist(__global float* image, __global uint* partial_histogram) {
+kernel void partial_hist(__global uchar* image, __global uint* partial_histogram) {
 	const int global_size = get_global_size(0);
 	const int group_size = get_local_size(0);
 	const int group_id = get_group_id(0);
@@ -17,7 +33,7 @@ kernel void partial_hist(__global float* image, __global uint* partial_histogram
 
 	int brightness;
 	for (int i = get_global_id(0); i < image_size; i += global_size) {
-		brightness = max(max(image[i*NUM_CHANNELS + 0], image[i*NUM_CHANNELS + 1]), image[i*NUM_CHANNELS + 2])*(HIST_SIZE-1);
+		brightness = max(max(image[i*NUM_CHANNELS + 0], image[i*NUM_CHANNELS + 1]), image[i*NUM_CHANNELS + 2]);
 		barrier(CLK_LOCAL_MEM_FENCE);
 		atomic_inc(&l_hist[brightness]);
 	}
@@ -60,28 +76,31 @@ kernel void hist_cdf( __global uint* hist) {
 }
 
 //kernel to perform histogram equalisation using the modified brightness cdf
-kernel void histogram_equalisation( __global float* image, __global uint* brightness_cdf) {
-	for (int i= get_global_id(0); i < image_size; i+=get_global_size(0)) {
-		float3 rgb = (float3) (image[i*NUM_CHANNELS + 0], image[i*NUM_CHANNELS + 1], image[i*NUM_CHANNELS + 2]);
-		float3 hsv = RGBtoHSV(rgb);		//Convert to HSV to get Hue and Saturation
+kernel void histogram_equalisation(read_only image2d_t input_image, write_only image2d_t output_image, __global uint* brightness_cdf) {
+	int2 pos;
+	uint4 pixel;
+	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
+			pixel = read_imageui(input_image, sampler, pos);
 
-		hsv.z = ((HIST_SIZE-1)*(brightness_cdf[(int)hsv.z] - brightness_cdf[0]))
-					/(image_size - brightness_cdf[0]);
-
-		rgb = HSVtoRGB(hsv);	//Convert back to RGB with the modified brightness for V
-		image[i*NUM_CHANNELS + 0] = rgb.x;
-		image[i*NUM_CHANNELS + 1] = rgb.y;
-		image[i*NUM_CHANNELS + 2] = rgb.z;
+			float3 hsv = RGBtoHSV(pixel);		//Convert to HSV to get Hue and Saturation
+	
+			hsv.z = (PIXEL_RANGE*(brightness_cdf[(int)hsv.z] - brightness_cdf[0]))
+						/(image_size - brightness_cdf[0]);
+	
+			pixel = HSVtoRGB(hsv);	//Convert back to RGB with the modified brightness for V
+			write_imageui(output_image, pos, pixel);
+		}
 	}
 }
 
-float3 RGBtoHSV(float3 rgb) {
-	float r = rgb.x*(HIST_SIZE-1);
-	float g = rgb.y*(HIST_SIZE-1);
-	float b = rgb.z*(HIST_SIZE-1);
+float3 RGBtoHSV(uint4 rgb) {
+	float r = rgb.x;
+	float g = rgb.y;
+	float b = rgb.z;
 	float rgb_min, rgb_max, delta;
 	rgb_min = min(min(r, g), b);
-	rgb_max = clamp(max(max(r, g), b), 0.f, HIST_SIZE*1.f-1);
+	rgb_max = max(max(r, g), b);
 
 	float3 hsv;
 
@@ -104,15 +123,16 @@ float3 RGBtoHSV(float3 rgb) {
 	return hsv;
 }
 
-float3 HSVtoRGB(float3 hsv) {
+uint4 HSVtoRGB(float3 hsv) {
 	int i;
 	float h = hsv.x;
 	float s = hsv.y;
 	float v = hsv.z;
 	float f, p, q, t;
-	float3 rgb;
+	uint4 rgb;
+	rgb.w = 0;
 	if( s == 0 ) { // achromatic (grey)
-		rgb.x = rgb.y = rgb.z = v/(HIST_SIZE-1);
+		rgb.x = rgb.y = rgb.z = v;
 		return rgb;
 	}
 	h /= 60;			// sector 0 to 5
@@ -153,8 +173,5 @@ float3 HSVtoRGB(float3 hsv) {
 			rgb.z = q;
 			break;
 	}
-	rgb.x = rgb.x/(HIST_SIZE-1);
-	rgb.y = rgb.y/(HIST_SIZE-1);
-	rgb.z = rgb.z/(HIST_SIZE-1);
 	return rgb;
 }

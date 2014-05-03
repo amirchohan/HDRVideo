@@ -21,6 +21,9 @@
 #include "ReinhardGlobal.h"
 #include "GradDom.h"
 
+#define PIXEL_RANGE 255
+#define NUM_CHANNELS 4
+
 using namespace hdr;
 using namespace std;
 
@@ -200,14 +203,14 @@ Image readJPG(const char* filePath) {
 	if (!input) throw std::runtime_error("Problem opening input file");
  
  	uchar* udata = (uchar*) input->pixels;
-  	float* data = (float*) calloc(4*(input->w * input->h), sizeof(float));
+  	pixel* data = (pixel*) calloc(NUM_CHANNELS*(input->w * input->h), sizeof(pixel));
 
 	for (int y = 0; y < input->h; y++) {
 		for (int x = 0; x < input->w; x++) {
 			for (int j=0; j<3; j++) {
- 		 		data[(x + y*input->w)*4 + j] = ((float)udata[(x + y*input->w)*3 + j])/255.f;
+ 		 		data[(x + y*input->w)*NUM_CHANNELS + j] = (pixel)udata[(x + y*input->w)*3 + j];
  		 	}
- 		 	data[(x + y*input->w)*4 + 3] = 0.f;
+ 		 	data[(x + y*input->w)*NUM_CHANNELS + 3] = 0;
  		 }
  	}
 
@@ -251,7 +254,7 @@ void writeJPG(Image &img, const char* filePath) {
 	for (int y = 0; y < img.height; y++) {
 		for (int x = 0; x < img.width; x++) {
 			for (int i=0; i < 3; i++)
-				charImageData[(x + y*img.width)*3 + i] = getPixel(img, x, y, i)*255.f;
+				charImageData[(x + y*img.width)*3 + i] = getPixel(img, x, y, i);
 		}
 	}
 

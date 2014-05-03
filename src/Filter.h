@@ -7,19 +7,23 @@
 #include <cstring>
 #include <iostream>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdarg.h>
 #include <CL/cl.h>
 #include <CL/cl_gl.h>
 
-#include <GLES/gl.h>
-
+#ifdef __ANDROID_API__
+	#include <GLES/gl.h>
+#else
+	#include <GL/gl.h>
+#endif
 
 #define METHOD_REFERENCE  (1<<1)
 #define METHOD_HALIDE_CPU (1<<2)
 #define METHOD_HALIDE_GPU (1<<3)
 #define METHOD_OPENCL     (1<<4)
 
-#define PIXEL_RANGE	256	//8-bit
+#define PIXEL_RANGE	255	//8-bit
 #define NUM_CHANNELS 4	//RGBA
 
 #define CHECK_ERROR_OCL(err, op, action)							\
@@ -29,30 +33,14 @@
 		action;														\
 	}
 
-#ifndef BUFFER_T_DEFINED
-#define BUFFER_T_DEFINED
-typedef struct buffer_t {
-	uint64_t dev;
-	float* host;
-	int32_t extent[4];
-	int32_t stride[4];
-	int32_t min[4];
-	int32_t elem_size;
-	bool host_dirty;
-	bool dev_dirty;
-} buffer_t;
-#endif
-extern "C" void halide_dev_sync(void *user_context);
-extern "C" void halide_copy_to_dev(void *user_context, buffer_t *buf);
-extern "C" void halide_copy_to_host(void *user_context, buffer_t *buf);
-extern "C" void halide_release(void *user_context);
-
 namespace hdr
 {
 typedef unsigned char uchar;
 
+typedef uint8_t pixel;
+
 typedef struct {
-	float* data;
+	pixel* data;
 	size_t width, height;
 } Image;
 
@@ -85,7 +73,7 @@ public:
 
 	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
 	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
-	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) = 0;
+	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params, const int width, const int height) = 0;
 	virtual double runCLKernels() = 0;
 	virtual bool runOpenCL(int gl_texture) = 0;
 	virtual bool runOpenCL(Image input, Image output) = 0;
@@ -100,7 +88,7 @@ protected:
 	Image m_reference;
 	int (*m_statusCallback)(const char*, va_list args);
 	void reportStatus(const char *format, ...) const;
-	virtual bool verify(Image input, Image output, float tolerance=(1/255.f));
+	virtual bool verify(Image input, Image output, float tolerance=1.f);
 
 	cl_device_id m_device;
 	cl_context m_clContext;
@@ -111,6 +99,9 @@ protected:
 	std::map<std::string, cl_kernel> kernels;
 	std::map<std::string, size_t> local_sizes;
 	std::map<std::string, size_t> global_sizes;
+	std::map<std::string, size_t*> twoDlocal_sizes;
+	std::map<std::string, size_t*> twoDglobal_sizes;
+
 
 	bool initCL(cl_context_properties context_prop[], const Params& params, const char *source, const char *options);
 	void releaseCL();
@@ -120,8 +111,6 @@ protected:
 double getCurrentTime();
 
 // Image utils
-buffer_t createHalideBuffer(Image &image);
-
 float* channel_mipmap(float* input, int width, int height, int level=1);
 Image image_mipmap(Image &input, int level=1);
 

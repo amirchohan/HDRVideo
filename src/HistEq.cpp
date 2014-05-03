@@ -24,17 +24,23 @@ bool HistEq::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) {
+bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int width, const int height) {
 	char flags[1024];
-	sprintf(flags, "-cl-fast-relaxed-math -D HIST_SIZE=%d -D NUM_CHANNELS=%d -Dimage_size=%d", PIXEL_RANGE, NUM_CHANNELS, image_size);
+	int hist_size = PIXEL_RANGE+1;
+
+	sprintf(flags, "-cl-fast-relaxed-math -D PIXEL_RANGE=%d -D HIST_SIZE=%d -D NUM_CHANNELS=%d -D width=%d -D height=%d -Dimage_size=%d",
+			PIXEL_RANGE, hist_size, NUM_CHANNELS, width, height, width*height);
 
 	if (!initCL(context_prop, params, histEq_kernel, flags)) {
 		return false;
 	}
 
+
 	/////////////////////////////////////////////////////////////////kernels
 	cl_int err;
 
+	kernels["transfer_data"] = clCreateKernel(m_program, "transfer_data", &err);
+	CHECK_ERROR_OCL(err, "creating transfer_data kernel", return false);
 
 	//compute partial histogram
 	kernels["partial_hist"] = clCreateKernel(m_program, "partial_hist", &err);
@@ -52,26 +58,42 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 	kernels["hist_eq"] = clCreateKernel(m_program, "histogram_equalisation", &err);
 	CHECK_ERROR_OCL(err, "creating histogram_equalisation kernel", return false);
 
-
-
 	//get info to set the global_reduc and local_reduc according to the GPU specs
 	size_t preferred_wg_size;	//workgroup size should be a multiple of this
 	err = clGetKernelWorkGroupInfo (kernels["partial_hist"], m_device,
 		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &preferred_wg_size, NULL);
 	CHECK_ERROR_OCL(err, "getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE", return false);
 
+	size_t max_wg_size;
+	clGetDeviceInfo(m_device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &max_wg_size, NULL);
+
 	size_t max_cu;	//max compute units
 	err = clGetDeviceInfo(m_device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(size_t), &max_cu, NULL);
+
+	reportStatus("CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: %lu\nCL_DEVICE_MAX_WORK_GROUP_SIZE: %lu\nCL_DEVICE_MAX_COMPUTE_UNITS: %lu", preferred_wg_size, max_wg_size, max_cu);
 
 	const size_t local_reduc = preferred_wg_size;	//workgroup size for reduction kernels
 	const size_t global_reduc = ((int)preferred_wg_size)*((int)max_cu);	//global_reduc size for reduction kernels
 	const int num_wg_reduc = global_reduc/local_reduc;
 
-	const size_t merge_hist_local = PIXEL_RANGE;
-	const size_t merge_hist_global = PIXEL_RANGE*merge_hist_local;
+	const size_t merge_hist_local = hist_size;
+	const size_t merge_hist_global = hist_size*merge_hist_local;
 
 	const size_t local = preferred_wg_size;
-	const size_t global = ceil((float)image_size/(float)local) * local;
+	const size_t global = ceil((float)width*height/(float)local) * local;
+
+	size_t* local2Dsize = (size_t*) calloc(2, sizeof(size_t));
+	size_t* global2Dsize = (size_t*) calloc(2, sizeof(size_t));
+	local2Dsize[0] = preferred_wg_size;
+	local2Dsize[1] = preferred_wg_size;
+	while (local2Dsize[0]*local2Dsize[1] > max_wg_size) {
+		local2Dsize[0] /= 2;
+		local2Dsize[1] /= 2;
+	}
+	global2Dsize[0] = ceil((float)width/(float)local2Dsize[0])*local2Dsize[0];
+	global2Dsize[1] = ceil((float)height/(float)local2Dsize[1])*local2Dsize[1];
+
+	reportStatus("2D kernel sizes: Local=(%lu, %lu) Global=(%lu, %lu)", local2Dsize[0], local2Dsize[1], global2Dsize[0], global2Dsize[1]);
 
 	local_sizes["reduc"]  = local_reduc;
 	global_sizes["reduc"] = global_reduc;
@@ -79,27 +101,40 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 	local_sizes["merge_hist"] = merge_hist_local;
 	global_sizes["merge_hist"] = merge_hist_global;
 
-	local_sizes["hist_cdf"] = PIXEL_RANGE;
-	global_sizes["hist_cdf"] = PIXEL_RANGE;
+	local_sizes["hist_cdf"] = hist_size;
+	global_sizes["hist_cdf"] = hist_size;
 
 	local_sizes["normal"] = local;
 	global_sizes["normal"] = global;
 
+	twoDlocal_sizes["transfer_data"] = local2Dsize;
+	twoDglobal_sizes["transfer_data"] = global2Dsize;
 
 	/////////////////////////////////////////////////////////////////allocating memory
 
-	mems["partial_hist"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*PIXEL_RANGE*num_wg_reduc, NULL, &err);
+	mems["partial_hist"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*hist_size*num_wg_reduc, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 
-	mems["hist"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*PIXEL_RANGE, NULL, &err);
+	mems["hist"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(unsigned int)*hist_size, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating histogram memory", return false);
 
-	mems["image"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*image_size*NUM_CHANNELS, NULL, &err);
+	mems["image"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(pixel)*width*height*NUM_CHANNELS, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
+	cl_image_format format;
+	format.image_channel_order = CL_RGBA;
+	format.image_channel_data_type = CL_UNSIGNED_INT8;
+	mems["input_image"] = clCreateImage2D(m_clContext, CL_MEM_READ_ONLY, &format, width, height, 0, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating input image memory", return false);
 
+	mems["output_image"] = clCreateImage2D(m_clContext, CL_MEM_WRITE_ONLY, &format, width, height, 0, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating output image memory", return false);
 
 	/////////////////////////////////////////////////////////////////setting kernel arguements
+
+	err  = clSetKernelArg(kernels["transfer_data"], 0, sizeof(cl_mem), &mems["input_image"]);
+	err |= clSetKernelArg(kernels["transfer_data"], 1, sizeof(cl_mem), &mems["image"]);
+	CHECK_ERROR_OCL(err, "setting transfer_data arguments", return false);
 
 	err  = clSetKernelArg(kernels["partial_hist"], 0, sizeof(cl_mem), &mems["image"]);
 	err |= clSetKernelArg(kernels["partial_hist"], 1, sizeof(cl_mem), &mems["partial_hist"]);
@@ -114,9 +149,12 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 	err = clSetKernelArg(kernels["hist_cdf"], 0, sizeof(cl_mem), &mems["hist"]);
 	CHECK_ERROR_OCL(err, "setting hist_cdf arguments", return false);
 
-	err  = clSetKernelArg(kernels["hist_eq"], 0, sizeof(cl_mem), &mems["image"]);
-	err |= clSetKernelArg(kernels["hist_eq"], 1, sizeof(cl_mem), &mems["hist"]);
+	err  = clSetKernelArg(kernels["hist_eq"], 0, sizeof(cl_mem), &mems["input_image"]);
+	err |= clSetKernelArg(kernels["hist_eq"], 1, sizeof(cl_mem), &mems["output_image"]);
+	err |= clSetKernelArg(kernels["hist_eq"], 2, sizeof(cl_mem), &mems["hist"]);
 	CHECK_ERROR_OCL(err, "setting histogram_equalisation arguments", return false);
+
+
 
 	return true;
 }
@@ -125,6 +163,10 @@ double HistEq::runCLKernels() {
 	cl_int err;
 	//let it begin
 	double start = omp_get_wtime();
+
+	reportStatus("%lu, %lu", twoDglobal_sizes["transfer_data"][0], twoDglobal_sizes["transfer_data"][1]);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["transfer_data"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "enqueuing transfer_data kernel", return false);
 
 	err = clEnqueueNDRangeKernel(m_queue, kernels["partial_hist"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing partial_hist kernel", return false);
@@ -135,7 +177,7 @@ double HistEq::runCLKernels() {
 	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_cdf"], 1, NULL, &global_sizes["hist_cdf"], &local_sizes["hist_cdf"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing hist_cdf kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_eq"], 1, NULL, &global_sizes["normal"], &local_sizes["normal"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_eq"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing histogram_equalisation kernel", return false);
 
 	err = clFinish(m_queue);
@@ -146,10 +188,20 @@ double HistEq::runCLKernels() {
 bool HistEq::runOpenCL(int gl_texture) {
 	cl_int err;
 
-	cl_mem hello = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gl_texture, &err);
-	CHECK_ERROR_OCL(err, "creating from GL texture", return false);
+	mems["input_image"] = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gl_texture, &err);
+	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
-	reportStatus("gl texture created");
+	err = clEnqueueAcquireGLObjects(m_queue, 1, &mems["input_image"], 0, 0, 0);
+	CHECK_ERROR_OCL(err, "acquiring GL objects", return false);
+
+	double runTime = runCLKernels();
+
+	err = clEnqueueReleaseGLObjects(m_queue, 1, &mems["input_image"], 0, 0, 0);
+	CHECK_ERROR_OCL(err, "releasing GL objects", return false);
+
+
+	reportStatus("Finished OpenCL kernel");
+
 
 	return false;
 }
@@ -157,13 +209,14 @@ bool HistEq::runOpenCL(int gl_texture) {
 bool HistEq::runOpenCL(Image input, Image output) {
 	cl_int err;
 
-	//transfer memory to the device
-	err = clEnqueueWriteBuffer(m_queue, mems["image"], CL_TRUE, 0, sizeof(float)*input.width*input.height*NUM_CHANNELS, input.data, 0, NULL, NULL);
+ 	const size_t origin[] = {0, 0, 0};
+ 	const size_t region[] = {input.width, input.height, 1};
+	err = clEnqueueWriteImage(m_queue, mems["input_image"], CL_TRUE, origin, region, sizeof(pixel)*input.width*NUM_CHANNELS, 0, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
 	double runTime = runCLKernels();
 
-	err = clEnqueueReadBuffer(m_queue, mems["image"], CL_TRUE, 0, sizeof(float)*output.width*output.height*NUM_CHANNELS, output.data, 0, NULL, NULL );
+	err = clEnqueueReadImage(m_queue, mems["output_image"], CL_TRUE, origin, region, sizeof(pixel)*input.width*NUM_CHANNELS, 0, output.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "reading image memory", return false);
 
 	reportStatus("Finished OpenCL kernel");
@@ -174,13 +227,15 @@ bool HistEq::runOpenCL(Image input, Image output) {
 		"Finished in %lf ms (verification %s)",
 		runTime*1000, passed ? "passed" : "failed");
 
-	return passed;
+	return true;
 }
 
 bool HistEq::cleanupOpenCL() {
+	clReleaseMemObject(mems["input_image"]);
 	clReleaseMemObject(mems["image"]);
 	clReleaseMemObject(mems["hist"]);
 	clReleaseMemObject(mems["partial_hist"]);
+	clReleaseKernel(kernels["transfer_data"]);
 	clReleaseKernel(kernels["partial_hist"]);
 	clReleaseKernel(kernels["hist"]);
 	clReleaseKernel(kernels["hist_cdf"]);
@@ -193,12 +248,12 @@ bool HistEq::cleanupOpenCL() {
 bool HistEq::runReference(Image input, Image output) {
 	// Check for cached result
 	if (m_reference.data) {
-		memcpy(output.data, m_reference.data, output.width*output.height*4);
+		memcpy(output.data, m_reference.data, output.width*output.height*NUM_CHANNELS);
 		reportStatus("Finished reference (cached)");
 		return true;
 	}
 
-	const int hist_size = PIXEL_RANGE;
+	const int hist_size = PIXEL_RANGE+1;
 	unsigned int brightness_hist[hist_size] = {0};
 	int brightness;
 	float red, green, blue;
@@ -209,7 +264,7 @@ bool HistEq::runReference(Image input, Image output) {
 			red   = getPixel(input, x, y, 0);
 			green = getPixel(input, x, y, 1);
 			blue  = getPixel(input, x, y, 2);
-			brightness = std::max(std::max(red, green), blue)*(hist_size-1);
+			brightness = std::max(std::max(red, green), blue);
 			brightness_hist[brightness] ++;
 		}
 	}
@@ -244,7 +299,7 @@ bool HistEq::runReference(Image input, Image output) {
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new float[output.width*output.height*NUM_CHANNELS];
+	m_reference.data = new pixel[output.width*output.height*NUM_CHANNELS];
 	memcpy(m_reference.data, output.data, output.width*output.height*NUM_CHANNELS);
 
 	return true;

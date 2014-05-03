@@ -33,7 +33,7 @@ extern "C" {
 	//JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_HDR_nativeOnStop(JNIEnv* jenv, jobject obj);
 	//JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_HDR_nativeSetSurface(JNIEnv* jenv, jobject obj, jobject surface);
 
-	JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint image_size);
+	JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint width, jint height);
 	JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_processFrame(JNIEnv* jenv, jobject obj, jint gl_texture_id);
 	JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_killCL(JNIEnv* jenv, jobject obj);
 

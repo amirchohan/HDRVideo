@@ -141,7 +141,7 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 
 bool Filter::verify(Image input, Image output, float tolerance) {
 	// Compute reference image8
-	Image ref = {(float*) calloc(output.width*output.height*NUM_CHANNELS, sizeof(float)), output.width, output.height};
+	Image ref = {(pixel*) calloc(output.width*output.height*NUM_CHANNELS, sizeof(pixel)), output.width, output.height};
 	runReference(input, ref);
 
 	// Compare pixels
@@ -173,7 +173,7 @@ bool Filter::verify(Image input, Image output, float tolerance) {
 }
 
 Image Filter::runFilter(Image input, Params params, unsigned int method) {
-	Image output = {(float*) calloc(input.width*input.height*NUM_CHANNELS, sizeof(float)), input.width, input.height};
+	Image output = {(pixel*) calloc(input.width*input.height*NUM_CHANNELS, sizeof(pixel)), input.width, input.height};
 
 	std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
 
@@ -189,7 +189,7 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 			runHalideGPU(input, output, params);
 			break;
 		case METHOD_OPENCL:
-			setupOpenCL(NULL, params, input.width*input.height);
+			setupOpenCL(NULL, params, input.width, input.height);
 			runOpenCL(input, output);
 			cleanupOpenCL();
 			break;
@@ -226,7 +226,7 @@ Image image_mipmap(Image &input, int level) {
 	int m_width = input.width/scale_factor;
 	int m_height = input.height/scale_factor;
 
-	Image output = {(float*) calloc(m_width*m_height*NUM_CHANNELS, sizeof(float)), m_width, m_height};
+	Image output = {(pixel*) calloc(m_width*m_height*NUM_CHANNELS, sizeof(pixel)), m_width, m_height};
 	for (int y = 0; y < m_height; y++) {
 		for (int x = 0; x < m_width; x++) {
 			int _x = scale_factor*x;
@@ -247,18 +247,6 @@ float clamp(float x, float min, float max) {
 	return x < min ? min : x > max ? max : x;
 }
 
-buffer_t createHalideBuffer(Image &image) {
-	buffer_t buffer = {0};
-	buffer.host = image.data;
-	buffer.extent[0] = image.width;
-	buffer.extent[1] = image.height;
-	buffer.extent[2] = 4;
-	buffer.stride[0] = 4;
-	buffer.stride[1] = image.width*4;
-	buffer.stride[2] = 1;
-	buffer.elem_size = 1;
-	return buffer;
-}
 
 float getValue(float* data, int x, int y, int width, int height) {
 	int _x = clamp(x, 0, width);
@@ -269,13 +257,13 @@ float getValue(float* data, int x, int y, int width, int height) {
 float getPixel(Image &image, int x, int y, int c) {
 	int _x = clamp(x, 0, image.width-1);
 	int _y = clamp(y, 0, image.height-1);
-	return image.data[(_x + _y*image.width)*NUM_CHANNELS + c];
+	return ((float)image.data[(_x + _y*image.width)*NUM_CHANNELS + c]);
 }
 
 void setPixel(Image &image, int x, int y, int c, float value) {
 	int _x = clamp(x, 0, image.width-1);
 	int _y = clamp(y, 0, image.height-1);
-	image.data[(_x + _y*image.width)*NUM_CHANNELS + c] = clamp(value, 0.f, 1.f);
+	image.data[(_x + _y*image.width)*NUM_CHANNELS + c] = clamp(value, 0.f, PIXEL_RANGE*1.f);
 }
 
 float getPixelLuminance(float3 pixel_val) {
@@ -286,9 +274,9 @@ float getPixelLuminance(float3 pixel_val) {
 
 
 float3 RGBtoHSV(float3 rgb) {
-	float r = rgb.x*(PIXEL_RANGE-1);
-	float g = rgb.y*(PIXEL_RANGE-1);
-	float b = rgb.z*(PIXEL_RANGE-1);
+	float r = rgb.x;
+	float g = rgb.y;
+	float b = rgb.z;
 	float min, max, delta;
 	min = std::min(std::min(r, g), b);
 	max = std::max(std::max(r, g), b);
@@ -322,7 +310,7 @@ float3 HSVtoRGB(float3 hsv) {
 	float f, p, q, t;
 	float3 rgb;
 	if( s == 0 ) { // achromatic (grey)
-		rgb.x = rgb.y = rgb.z = v/(PIXEL_RANGE-1);
+		rgb.x = rgb.y = rgb.z = v;
 		return rgb;
 	}
 	h /= 60;			// sector 0 to 5
@@ -363,9 +351,6 @@ float3 HSVtoRGB(float3 hsv) {
 			rgb.z = q;
 			break;
 	}
-	rgb.x = rgb.x/(PIXEL_RANGE-1);
-	rgb.y = rgb.y/(PIXEL_RANGE-1);
-	rgb.z = rgb.z/(PIXEL_RANGE-1);
 	return rgb;
 }
 

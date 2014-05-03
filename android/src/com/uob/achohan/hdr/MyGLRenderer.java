@@ -110,6 +110,10 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 	public void onSurfaceCreated (GL10 unused, EGLConfig config) {
 		mCamera = Camera.open();
 
+		Camera.Parameters param = mCamera.getParameters();
+		param.setPictureSize(640, 480);
+		mCamera.setParameters(param);
+
 		image_width = mCamera.getParameters().getPictureSize().width;
 		image_height = mCamera.getParameters().getPictureSize().height;
 		Log.d(TAG, "image size: " + image_width + "x" + image_height);
@@ -124,7 +128,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		catch ( IOException ioe ) {
 		}
 
-		initCL(image_width*image_height);
+		initCL(image_width, image_height);
 
 		GLES20.glClearColor (1.0f, 1.0f, 0.0f, 1.0f);
 		hProgram = loadShader (vss, fss);
@@ -290,7 +294,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		Log.d(TAG, text);
 	}
 
-	public static native void initCL(int image_size);
+	public static native void initCL(int image_width, int image_height);
 	public static native void processFrame(int gl_texture_id);
 	public static native void killCL();
 

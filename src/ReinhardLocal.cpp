@@ -31,7 +31,7 @@ bool ReinhardLocal::runHalideGPU(Image input, Image output, const Params& params
 	return false;
 }
 
-bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int image_size) {
+bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int width, const int height) {
 	return false;
 }
 
@@ -280,7 +280,7 @@ bool ReinhardLocal::runReference(Image input, Image output) {
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new float[output.width*output.height*4];
+	m_reference.data = new pixel[output.width*output.height*4];
 	memcpy(m_reference.data, output.data, output.width*output.height*4);
 
 	return true;
