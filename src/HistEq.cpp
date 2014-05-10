@@ -175,7 +175,7 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 	err = clSetKernelArg(kernels["hist_cdf"], 0, sizeof(cl_mem), &mems["hist"]);
 	CHECK_ERROR_OCL(err, "setting hist_cdf arguments", return false);
 
-	err  = clSetKernelArg(kernels["hist_eq"], 0, sizeof(cl_mem), &mem_images[0]);
+	err  = clSetKernelArg(kernels["hist_eq"], 0, sizeof(cl_mem), &mems["image"]);
 	err |= clSetKernelArg(kernels["hist_eq"], 1, sizeof(cl_mem), &mem_images[1]);
 	err |= clSetKernelArg(kernels["hist_eq"], 2, sizeof(cl_mem), &mems["hist"]);
 	CHECK_ERROR_OCL(err, "setting histogram_equalisation arguments", return false);
@@ -190,7 +190,7 @@ double HistEq::runCLKernels() {
 	//let it begin
 	double start = omp_get_wtime();
 
-	/*err = clEnqueueNDRangeKernel(m_queue, kernels["transfer_data"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["transfer_data"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing transfer_data kernel", return false);
 
 	err = clEnqueueNDRangeKernel(m_queue, kernels["partial_hist"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
@@ -200,7 +200,7 @@ double HistEq::runCLKernels() {
 	CHECK_ERROR_OCL(err, "enqueuing merge_hist kernel", return false);
 
 	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_cdf"], 1, NULL, &global_sizes["hist_cdf"], &local_sizes["hist_cdf"], 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "enqueuing hist_cdf kernel", return false);*/
+	CHECK_ERROR_OCL(err, "enqueuing hist_cdf kernel", return false);
 
 	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_eq"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing histogram_equalisation kernel", return false);
@@ -219,10 +219,10 @@ bool HistEq::runOpenCL(int input_texid, int output_texid) {
 
 	double runTime = runCLKernels();
 
-	float* debug = (float*) calloc(image_height*image_width*NUM_CHANNELS, sizeof(float));
+	/*float* debug = (float*) calloc(image_height*image_width*NUM_CHANNELS, sizeof(float));
 
 	err = clEnqueueReadBuffer(m_queue, mems["image"], CL_TRUE, 0, sizeof(float)*image_height*image_width*NUM_CHANNELS, debug, 0, NULL, NULL );
-	CHECK_ERROR_OCL(err, "reading image memory", return false);
+	CHECK_ERROR_OCL(err, "reading image memory", return false);*/
 
 	/*int j=1;
 	for (int i=0; j<256; i++) {

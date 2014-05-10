@@ -1,24 +1,38 @@
 
-
-uchar glVal_to_cl(uint val);
+float GL_to_CL(uint val);
 float3 RGBtoHSV(uint4 rgb);
 uint4 HSVtoRGB(float3 hsv);
 
 const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
+//use this one for android because android's opencl specification is buggy
 kernel void transfer_data(__read_only image2d_t input_image, __global float* image) {
 	int2 pos;
 	uint4 pixel;
 	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
 		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
 			pixel = read_imageui(input_image, sampler, pos);
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 0] = (float) glVal_to_cl(pixel.x);
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 1] = (float) glVal_to_cl(pixel.y);
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 2] = (float) glVal_to_cl(pixel.z);		
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 3] = (float) glVal_to_cl(pixel.w);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 0] = GL_to_CL(pixel.x);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 1] = GL_to_CL(pixel.y);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 2] = GL_to_CL(pixel.z);		
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 3] = GL_to_CL(pixel.w);
 		}
 	}
 }
+/*
+kernel void transfer_data(__read_only image2d_t input_image, __global float* image) {
+	int2 pos;
+	uint4 pixel;
+	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
+			pixel = read_imageui(input_image, sampler, pos);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 0] = ((float)pixel.x);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 1] = ((float)pixel.y);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 2] = ((float)pixel.z);		
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 3] = ((float)pixel.w);
+		}
+	}
+}*/
 
 
 //computes the histogram for brightness
@@ -70,17 +84,23 @@ kernel void hist_cdf( __global uint* hist) {
 }
 
 //kernel to perform histogram equalisation using the modified brightness cdf
-kernel void histogram_equalisation(read_only image2d_t input_image, write_only image2d_t output_image, __global uint* brightness_cdf) {
+kernel void histogram_equalisation(__global float* image, write_only image2d_t output_image, __global uint* brightness_cdf) {
 	int2 pos;
 	uint4 pixel;
+	float3 hsv;
 	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
 		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
-			pixel = read_imageui(input_image, sampler, pos);
+			pixel.x = image[(pos.x + pos.y*width)*NUM_CHANNELS + 0];
+			pixel.y = image[(pos.x + pos.y*width)*NUM_CHANNELS + 1];
+			pixel.z = image[(pos.x + pos.y*width)*NUM_CHANNELS + 2];
+			pixel.w = image[(pos.x + pos.y*width)*NUM_CHANNELS + 3];
 
-			pixel.x = (uint) glVal_to_cl(pixel.x);
-			pixel.y = (uint) glVal_to_cl(pixel.y);
-			pixel.z = (uint) glVal_to_cl(pixel.z);
-			pixel.w = (uint) glVal_to_cl(pixel.w);
+			hsv = RGBtoHSV(pixel);		//Convert to HSV to get Hue and Saturation
+
+			hsv.z = ((HIST_SIZE-1)*(brightness_cdf[(int)hsv.z] - brightness_cdf[0]))
+						/(height*width - brightness_cdf[0]);
+
+			pixel = HSVtoRGB(hsv);	//Convert back to RGB with the modified brightness for V
 
 			write_imageui(output_image, pos, pixel);
 		}
@@ -169,12 +189,11 @@ uint4 HSVtoRGB(float3 hsv) {
 	return rgb;
 }
 
-
-uchar glVal_to_cl(uint val) {
+float GL_to_CL(uint val) {
 	if (val >= 14340) return round(0.1245790*val - 1658.44);	//>=128
-	if (val >= 13316) return round(0.0622869*val - 765.408);
-	if (val >= 12292) return round(0.0311424*val - 350.800);
-	if (val >= 11268) return round(0.0155702*val - 159.443);
+	if (val >= 13316) return round(0.0622869*val - 765.408);	//>=64
+	if (val >= 12292) return round(0.0311424*val - 350.800);	//>=32
+	if (val >= 11268) return round(0.0155702*val - 159.443);	//>=16
 
 	float v = (float) val;
 	return round(0.0000000000000125922*pow(v,4.f) - 0.00000000026729*pow(v,3.f) + 0.00000198135*pow(v,2.f) - 0.00496681*v - 0.0000808829); 
