@@ -27,7 +27,7 @@ bool GradDom::runHalideGPU(Image input, Image output, const Params& params) {
 	return false;
 }
 
-bool GradDom::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int width, const int height) {
+bool GradDom::setupOpenCL(cl_context_properties context_prop[], const Params& params) {
 	return false;
 }
 
@@ -35,7 +35,7 @@ double GradDom::runCLKernels() {
 	return 0.0;	
 }
 
-bool GradDom::runOpenCL(int gl_texture) {
+bool GradDom::runOpenCL(int input_texid, int output_texid) {
 	return false;
 }
 
@@ -314,7 +314,7 @@ bool GradDom::runReference(Image input, Image output) {
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new pixel[output.width*output.height*NUM_CHANNELS];
+	m_reference.data = new uchar[output.width*output.height*NUM_CHANNELS];
 	memcpy(m_reference.data, output.data, output.width*output.height*NUM_CHANNELS);
 
 	return true;

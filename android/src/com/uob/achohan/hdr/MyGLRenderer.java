@@ -18,6 +18,7 @@ package com.uob.achohan.hdr;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.CharBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.List;
@@ -30,6 +31,7 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
 
+import android.graphics.Point;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.hardware.Camera.Size;
@@ -37,7 +39,9 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
+import android.view.Display;
 import android.view.SurfaceHolder;
+import android.view.WindowManager;
 
 /**
  * Provides drawing instructions for a GLSurfaceView object. This class
@@ -61,21 +65,34 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		"  gl_Position = vec4 ( vPosition.x, vPosition.y, 0.0, 1.0 );\n" +
 		"}";
 
-	private final String fss =
+	private final String camera_fss =
 		"#extension GL_OES_EGL_image_external : require\n" +
 		"precision mediump float;\n" +
 		"uniform samplerExternalOES sTexture;\n" +
 		"varying vec2 texCoord;\n" +
 		"void main() {\n" +
-		"  gl_FragColor = texture2D(sTexture,texCoord);\n" +
+		"  gl_FragColor = texture2D(sTexture, texCoord);\n" +
+		"  //gl_FragColor = vec4(0, 0.75, 0, 1);\n" +
 		"}";
+
+	private final String texture_fss =
+		"precision mediump float;\n" +
+		"uniform sampler2D sTexture;\n" +
+		"varying vec2 texCoord;\n" +
+		"void main() {\n" +
+		"  gl_FragColor = texture2D(sTexture, texCoord);\n" +
+		"}";
+
+
 
 	private int[] hTex;
 	private int[] targetTex;
 	private IntBuffer targetFramebuffer;
-	private FloatBuffer pVertex;
-	private FloatBuffer pTexCoord;
+	private FloatBuffer vertexCoord;
+	private FloatBuffer cameraTexCoord;
+	private FloatBuffer openclTexCoord;
 	private int hProgram;
+	private int displayTextureProgram;
 
 	private Camera mCamera;
 	private SurfaceTexture mSTexture;
@@ -93,17 +110,40 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 	private int image_width;
 	private int image_height;
 
+	private int display_width;
+	private int display_height;
 
-	MyGLRenderer ( MyGLSurfaceView view ) {
+	MyGLRenderer (MyGLSurfaceView view, Point display_dim) {
 		mView = view;
-		float[] vtmp = { 1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f };
-		float[] ttmp = { 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f };
-		pVertex = ByteBuffer.allocateDirect(8*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-		pVertex.put (vtmp);
-		pVertex.position(0);
-		pTexCoord = ByteBuffer.allocateDirect(8*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-		pTexCoord.put (ttmp);
-		pTexCoord.position(0);
+		float[] vertexCoordTmp = {
+			-1.0f, -1.0f, 0.0f,
+			-1.0f,  1.0f, 0.0f,
+			 1.0f, -1.0f, 0.0f,
+			 1.0f,  1.0f, 0.0f};
+		float[] textureCoordTmp = {
+			 0.0f, 1.0f,
+			 0.0f, 0.0f,
+			 1.0f, 1.0f,
+			 1.0f, 0.0f };
+		float[] openclCoordTmp = {
+			 0.0f, 0.0f,
+			 0.0f, 1.0f,
+			 1.0f, 0.0f,
+			 1.0f, 1.0f
+		};
+
+		vertexCoord = ByteBuffer.allocateDirect(12*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+		vertexCoord.put(vertexCoordTmp);
+		vertexCoord.position(0);
+		cameraTexCoord = ByteBuffer.allocateDirect(8*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+		cameraTexCoord.put(textureCoordTmp);
+		cameraTexCoord.position(0);
+		openclTexCoord = ByteBuffer.allocateDirect(8*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+		openclTexCoord.put(openclCoordTmp);
+		openclTexCoord.position(0);
+
+		display_width  = display_dim.x;
+		display_height = display_dim.y;
 	}
 
 
@@ -128,10 +168,12 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		catch ( IOException ioe ) {
 		}
 
-		initCL(image_width, image_height);
+		initCL(image_width, image_height, targetTex[0], targetTex[1]);
 
 		GLES20.glClearColor (1.0f, 1.0f, 0.0f, 1.0f);
-		hProgram = loadShader (vss, fss);
+		hProgram = loadShader(vss, camera_fss);
+		displayTextureProgram = loadShader(vss, texture_fss);
+
 	}
 
 	public void onDrawFrame ( GL10 unused ) {
@@ -142,7 +184,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 	    if (fbret != GLES20.GL_FRAMEBUFFER_COMPLETE) {
 	      Log.d(TAG, "unable to bind fbo" + fbret);
 	    }
-		
+		GLES20.glViewport(0, 0, image_width, image_height);
 		GLES20.glClear( GLES20.GL_COLOR_BUFFER_BIT );
 
 		synchronized(this) {
@@ -162,33 +204,35 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
 		GLES20.glUniform1i(th, 0);
 
-		GLES20.glVertexAttribPointer(ph, 2, GLES20.GL_FLOAT, false, 4*2, pVertex);
-		GLES20.glVertexAttribPointer(tch, 2, GLES20.GL_FLOAT, false, 4*2, pTexCoord );
+		GLES20.glVertexAttribPointer(ph, 2, GLES20.GL_FLOAT, false, 4*3, vertexCoord);
+		GLES20.glVertexAttribPointer(tch, 2, GLES20.GL_FLOAT, false, 4*2, cameraTexCoord);
 		GLES20.glEnableVertexAttribArray(ph);
 		GLES20.glEnableVertexAttribArray(tch);
 
 		GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
-		GLES20.glFlush();
-		
-		processFrame(targetTex[0]);
+		GLES20.glFinish();
+
+		processFrame(targetTex[0], targetTex[1]);
+
+		GLES20.glViewport(0, 0, display_width, display_height);
 
 		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-		GLES20.glUseProgram(hProgram);
+		GLES20.glUseProgram(displayTextureProgram);
 
-		ph = GLES20.glGetAttribLocation(hProgram, "vPosition");
-		tch = GLES20.glGetAttribLocation (hProgram, "vTexCoord");
-		th = GLES20.glGetUniformLocation (hProgram, "sTexture");
+		ph = GLES20.glGetAttribLocation(displayTextureProgram, "vPosition");
+		tch = GLES20.glGetAttribLocation(displayTextureProgram, "vTexCoord");
+		th = GLES20.glGetUniformLocation(displayTextureProgram, "sTexture");
 
 		GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[0]);
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[1]);
 		GLES20.glUniform1i(th, 0);
 
-		GLES20.glVertexAttribPointer(ph, 2, GLES20.GL_FLOAT, false, 4*2, pVertex);
-		GLES20.glVertexAttribPointer(tch, 2, GLES20.GL_FLOAT, false, 4*2, pTexCoord );
+		GLES20.glVertexAttribPointer(ph, 2, GLES20.GL_FLOAT, false, 4*3, vertexCoord);
+		GLES20.glVertexAttribPointer(tch, 2, GLES20.GL_FLOAT, true, 4*2, openclTexCoord);
 		GLES20.glEnableVertexAttribArray(ph);
 		GLES20.glEnableVertexAttribArray(tch);
 		GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
-		GLES20.glFlush();
+		GLES20.glFinish();
 	}
 
 	public void onSurfaceChanged ( GL10 unused, int width, int height ) {
@@ -203,7 +247,6 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 			if ( i > 0 ) i--;
 			param.setPreviewSize(psize.get(i).width, psize.get(i).height);
 		}
-		param.set("orientation", "landscape");
 		mCamera.setParameters(param);
 		mCamera.startPreview();
 	}
@@ -216,7 +259,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
 	private void initTex() {
 		hTex = new int[1];
-		targetTex = new int[1];
+		targetTex = new int[2];
 		GLES20.glGenTextures ( 1, hTex, 0 );
 		GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
 		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
@@ -224,8 +267,40 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
 		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
 
-		GLES20.glGenTextures ( 1, targetTex, 0 );
+		/*ByteBuffer d = ByteBuffer.allocate(image_height*image_width*4);
+
+		for (int y = 0; y < image_height; y++) {
+			for (int x = 0; x < image_width; x++) {
+				d.put((x + y*image_width)*4 + 0, (byte) 0);
+				d.put((x + y*image_width)*4 + 1, (byte) 0);
+				d.put((x + y*image_width)*4 + 2, (byte) 0);
+				d.put((x + y*image_width)*4 + 3, (byte) 0);
+
+				for (int c =0 ; c < 4; c++) {
+					//d.put((x + y*image_width)*4 + c, (byte) 255);
+				}
+			}
+		}
+
+		d.put(0, (byte) 0);
+		int j=1;
+		for (int i=1; j<256; i++) {
+			if (i%3!=0) {
+				//Log.d(TAG, i +" "+j);
+				d.put(i, (byte) j);
+				j++;
+			}
+		}*/
+
+		GLES20.glGenTextures ( 2, targetTex, 0 );
 		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[0]);
+		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR);
+		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR);
+		GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, image_width, image_height, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
+
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[1]);
 		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR);
 		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR);
 		GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, image_width, image_height, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
@@ -244,9 +319,9 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		mView.requestRender();
 	}
 
-	private static int loadShader ( String vss, String fss ) {
+	private static int loadShader ( String vertex_shader, String fragment_shader ) {
 		int vshader = GLES20.glCreateShader(GLES20.GL_VERTEX_SHADER);
-		GLES20.glShaderSource(vshader, vss);
+		GLES20.glShaderSource(vshader, vertex_shader);
 		GLES20.glCompileShader(vshader);
 		int[] compiled = new int[1];
 		GLES20.glGetShaderiv(vshader, GLES20.GL_COMPILE_STATUS, compiled, 0);
@@ -258,7 +333,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 	 	}
 
 		int fshader = GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER);
-		GLES20.glShaderSource(fshader, fss);
+		GLES20.glShaderSource(fshader, fragment_shader);
 		GLES20.glCompileShader(fshader);
 		GLES20.glGetShaderiv(fshader, GLES20.GL_COMPILE_STATUS, compiled, 0);
 		if (compiled[0] == 0) {
@@ -294,8 +369,8 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		Log.d(TAG, text);
 	}
 
-	public static native void initCL(int image_width, int image_height);
-	public static native void processFrame(int gl_texture_id);
+	public static native void initCL(int image_width, int image_height, int input_texid, int output_texid);
+	public static native void processFrame(int input_texid, int output_texid);
 	public static native void killCL();
 
 

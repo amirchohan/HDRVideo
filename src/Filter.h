@@ -37,10 +37,8 @@ namespace hdr
 {
 typedef unsigned char uchar;
 
-typedef uint8_t pixel;
-
 typedef struct {
-	pixel* data;
+	uchar* data;
 	size_t width, height;
 } Image;
 
@@ -55,9 +53,10 @@ public:
 	typedef struct _Params_ {
 		cl_device_type type;
 		cl_uint platformIndex, deviceIndex;
-		bool verify;
+		bool opengl, verify;
 		_Params_() {
 			type = CL_DEVICE_TYPE_ALL;
+			opengl = false;
 			platformIndex = 0;
 			deviceIndex = 0;
 			verify = false;
@@ -73,13 +72,15 @@ public:
 
 	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
 	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
-	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params, const int width, const int height) = 0;
+	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params) = 0;
 	virtual double runCLKernels() = 0;
-	virtual bool runOpenCL(int gl_texture) = 0;
+	virtual bool runOpenCL(int input_texid, int output_texid) = 0;
 	virtual bool runOpenCL(Image input, Image output) = 0;
 	virtual bool cleanupOpenCL() = 0;
 	virtual bool runReference(Image input, Image output) = 0;
 	virtual Image runFilter(Image input, Params params, unsigned int method);
+	virtual void setImageSize(int width, int height);
+	virtual void setImageTextures(GLuint input_texture, GLuint output_texture);
 
 	virtual void setStatusCallback(int (*callback)(const char*, va_list args));
 
@@ -94,6 +95,7 @@ protected:
 	cl_context m_clContext;
 	cl_command_queue m_queue;
 	cl_program m_program;
+	cl_mem mem_images[2];
 
 	std::map<std::string, cl_mem> mems;
 	std::map<std::string, cl_kernel> kernels;
@@ -102,6 +104,11 @@ protected:
 	std::map<std::string, size_t*> twoDlocal_sizes;
 	std::map<std::string, size_t*> twoDglobal_sizes;
 
+
+	int image_width;
+	int image_height;
+	GLuint in_tex;
+	GLuint out_tex;
 
 	bool initCL(cl_context_properties context_prop[], const Params& params, const char *source, const char *options);
 	void releaseCL();

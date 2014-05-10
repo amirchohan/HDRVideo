@@ -64,6 +64,13 @@ bool Filter::initCL(cl_context_properties context_prop[], const Params& params, 
 	clGetDeviceInfo(m_device, CL_DEVICE_NAME, 64, name, NULL);
 	reportStatus("Using device: %s", name);
 
+	cl_ulong device_size;
+	clGetDeviceInfo(m_device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(device_size), &device_size, NULL);
+	reportStatus("CL_DEVICE_GLOBAL_MEM_SIZE: %lu bytes", device_size);
+
+	clGetDeviceInfo(m_device, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(device_size), &device_size, NULL);
+	reportStatus("CL_DEVICE_GLOBAL_MEM_SIZE: %lu bytes", device_size);
+
 	// Initialize SDL2
 	/*SDL_Init(SDL_INIT_VIDEO);
 	// Window mode MUST include SDL_WINDOW_OPENGL for use with OpenGL.
@@ -79,7 +86,7 @@ bool Filter::initCL(cl_context_properties context_prop[], const Params& params, 
 		0 
 	};*/
 
-	if (context_prop != NULL) context_prop[5] = (cl_context_properties) platform;
+	if (params.opengl) context_prop[5] = (cl_context_properties) platform;
 
 	m_clContext = clCreateContext(context_prop, 1, &m_device, NULL, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating context", return false);
@@ -141,7 +148,7 @@ void Filter::setStatusCallback(int (*callback)(const char*, va_list args)) {
 
 bool Filter::verify(Image input, Image output, float tolerance) {
 	// Compute reference image8
-	Image ref = {(pixel*) calloc(output.width*output.height*NUM_CHANNELS, sizeof(pixel)), output.width, output.height};
+	Image ref = {(uchar*) calloc(output.width*output.height*NUM_CHANNELS, sizeof(uchar)), output.width, output.height};
 	runReference(input, ref);
 
 	// Compare pixels
@@ -173,7 +180,7 @@ bool Filter::verify(Image input, Image output, float tolerance) {
 }
 
 Image Filter::runFilter(Image input, Params params, unsigned int method) {
-	Image output = {(pixel*) calloc(input.width*input.height*NUM_CHANNELS, sizeof(pixel)), input.width, input.height};
+	Image output = {(uchar*) calloc(input.width*input.height*NUM_CHANNELS, sizeof(uchar)), input.width, input.height};
 
 	std::cout << "--------------------------------Tonemapping using " << m_name << std::endl;
 
@@ -189,7 +196,9 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 			runHalideGPU(input, output, params);
 			break;
 		case METHOD_OPENCL:
-			setupOpenCL(NULL, params, input.width, input.height);
+			image_width = input.width;
+			image_height = input.height;
+			setupOpenCL(NULL, params);
 			runOpenCL(input, output);
 			cleanupOpenCL();
 			break;
@@ -204,6 +213,15 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 // Image utils //
 /////////////////
 
+void Filter::setImageSize(int width, int height) {
+	image_width  = width;
+	image_height = height;
+}
+
+void Filter::setImageTextures(GLuint input_texture, GLuint output_texture) {
+	in_tex = input_texture;
+	out_tex = output_texture;
+}
 
 float* channel_mipmap(float* input, int width, int height, int level) {
 	int scale_factor = pow(2, level);
@@ -226,7 +244,7 @@ Image image_mipmap(Image &input, int level) {
 	int m_width = input.width/scale_factor;
 	int m_height = input.height/scale_factor;
 
-	Image output = {(pixel*) calloc(m_width*m_height*NUM_CHANNELS, sizeof(pixel)), m_width, m_height};
+	Image output = {(uchar*) calloc(m_width*m_height*NUM_CHANNELS, sizeof(uchar)), m_width, m_height};
 	for (int y = 0; y < m_height; y++) {
 		for (int x = 0; x < m_width; x++) {
 			int _x = scale_factor*x;

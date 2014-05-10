@@ -17,9 +17,11 @@ package com.uob.achohan.hdr;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Point;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
+import android.view.Display;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -37,7 +39,11 @@ public class HDR extends Activity {
 		getWindow().setFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON, WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		mWL = ((PowerManager)getSystemService (Context.POWER_SERVICE)).newWakeLock(PowerManager.FULL_WAKE_LOCK, "WakeLock");
 		mWL.acquire();
-		mView = new MyGLSurfaceView(this);
+		Display display = getWindowManager().getDefaultDisplay();
+		Point display_dim = new Point();
+		display.getSize(display_dim);
+		
+		mView = new MyGLSurfaceView(this, display_dim);
 		setContentView(mView);
 	}
 	

@@ -203,12 +203,12 @@ Image readJPG(const char* filePath) {
 	if (!input) throw std::runtime_error("Problem opening input file");
  
  	uchar* udata = (uchar*) input->pixels;
-  	pixel* data = (pixel*) calloc(NUM_CHANNELS*(input->w * input->h), sizeof(pixel));
+  	uchar* data = (uchar*) calloc(NUM_CHANNELS*(input->w * input->h), sizeof(uchar));
 
 	for (int y = 0; y < input->h; y++) {
 		for (int x = 0; x < input->w; x++) {
 			for (int j=0; j<3; j++) {
- 		 		data[(x + y*input->w)*NUM_CHANNELS + j] = (pixel)udata[(x + y*input->w)*3 + j];
+ 		 		data[(x + y*input->w)*NUM_CHANNELS + j] = (uchar)udata[(x + y*input->w)*3 + j];
  		 	}
  		 	data[(x + y*input->w)*NUM_CHANNELS + 3] = 0;
  		 }

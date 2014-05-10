@@ -19,7 +19,7 @@
 #define LOG_TAG "hdr"
 
 
-JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint width, jint height) {
+JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint width, jint height, jint in_tex, jint out_tex) {
 	filter = new HistEq();
 	filter->setStatusCallback(updateStatus);
 
@@ -41,13 +41,17 @@ JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv
 	cl_prop[4] = CL_CONTEXT_PLATFORM;
 	cl_prop[6] = 0;
 
-	filter->setupOpenCL(cl_prop, params, width, height);
+	params.opengl = true;
+
+	filter->setImageSize(width, height);
+	filter->setImageTextures(in_tex, out_tex);
+	filter->setupOpenCL(cl_prop, params);
 
 	return;
 }
 
-JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_processFrame(JNIEnv* jenv, jobject obj, jint gl_texture_id) {
-	filter->runOpenCL(gl_texture_id);
+JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_processFrame(JNIEnv* jenv, jobject obj, jint input_texid, jint output_texid) {
+	filter->runOpenCL(input_texid, output_texid);
 }
 
 JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_killCL(JNIEnv* jenv, jobject obj) {

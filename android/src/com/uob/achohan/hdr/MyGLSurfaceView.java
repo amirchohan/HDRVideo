@@ -16,6 +16,7 @@
 package com.uob.achohan.hdr;
 
 import android.content.Context;
+import android.graphics.Point;
 import android.opengl.GLSurfaceView;
 import android.view.SurfaceHolder;
 
@@ -28,9 +29,9 @@ public class MyGLSurfaceView extends GLSurfaceView {
 
 	private final MyGLRenderer mRenderer;
 
-	MyGLSurfaceView (Context context) {
+	MyGLSurfaceView (Context context, Point display_dim) {
 		super(context);
-		mRenderer = new MyGLRenderer(this);
+		mRenderer = new MyGLRenderer(this, display_dim);
 		setEGLContextClientVersion (2);
 		setRenderer(mRenderer);
 		setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);

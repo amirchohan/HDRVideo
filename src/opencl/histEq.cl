@@ -1,26 +1,28 @@
 
 
+uchar glVal_to_cl(uint val);
 float3 RGBtoHSV(uint4 rgb);
 uint4 HSVtoRGB(float3 hsv);
 
 const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
-kernel void transfer_data(read_only image2d_t input_image, __global uchar* image) {
+kernel void transfer_data(__read_only image2d_t input_image, __global float* image) {
 	int2 pos;
 	uint4 pixel;
 	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
 		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
 			pixel = read_imageui(input_image, sampler, pos);
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 0] = pixel.x;
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 1] = pixel.y;
-			image[(pos.x + pos.y*width)*NUM_CHANNELS + 2] = pixel.z;			
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 0] = (float) glVal_to_cl(pixel.x);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 1] = (float) glVal_to_cl(pixel.y);
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 2] = (float) glVal_to_cl(pixel.z);		
+			image[(pos.x + pos.y*width)*NUM_CHANNELS + 3] = (float) glVal_to_cl(pixel.w);
 		}
 	}
 }
 
 
 //computes the histogram for brightness
-kernel void partial_hist(__global uchar* image, __global uint* partial_histogram) {
+kernel void partial_hist(__global float* image, __global uint* partial_histogram) {
 	const int global_size = get_global_size(0);
 	const int group_size = get_local_size(0);
 	const int group_id = get_group_id(0);
@@ -44,23 +46,15 @@ kernel void partial_hist(__global uchar* image, __global uint* partial_histogram
 	}
 }
 
+//requires global work group size to be equal to HIST_SIZE
 kernel void merge_hist(__global uint* partial_histogram, __global uint* histogram, __local uint* l_Data, const int num_hists) {
-
-	const int group_size = get_local_size(0);
-	const int lid = get_local_id(0);
-	const int group_id = get_group_id(0);
+	const int gid = get_global_id(0);
 
 	uint sum = 0;
-	for(uint i = lid; i < num_hists; i += group_size)
-		sum += partial_histogram[group_id + i * HIST_SIZE];
+	for(uint i = 0; i < num_hists; i++)
+		sum += partial_histogram[gid + i*HIST_SIZE];
 
-	l_Data[lid] = sum;
-	for(uint stride = group_size/2; stride > 0; stride >>= 1){
-		barrier(CLK_LOCAL_MEM_FENCE);
-		if(lid < stride) l_Data[lid] += l_Data[lid + stride];
-	}
-
-	if(lid == 0) histogram[group_id] = l_Data[0];
+	histogram[gid] = sum;
 }
 
 //TODO: even though this takes barely anytime at all, could look into parrallel scan in future
@@ -83,12 +77,11 @@ kernel void histogram_equalisation(read_only image2d_t input_image, write_only i
 		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
 			pixel = read_imageui(input_image, sampler, pos);
 
-			float3 hsv = RGBtoHSV(pixel);		//Convert to HSV to get Hue and Saturation
-	
-			hsv.z = (PIXEL_RANGE*(brightness_cdf[(int)hsv.z] - brightness_cdf[0]))
-						/(image_size - brightness_cdf[0]);
-	
-			pixel = HSVtoRGB(hsv);	//Convert back to RGB with the modified brightness for V
+			pixel.x = (uint) glVal_to_cl(pixel.x);
+			pixel.y = (uint) glVal_to_cl(pixel.y);
+			pixel.z = (uint) glVal_to_cl(pixel.z);
+			pixel.w = (uint) glVal_to_cl(pixel.w);
+
 			write_imageui(output_image, pos, pixel);
 		}
 	}
@@ -174,4 +167,15 @@ uint4 HSVtoRGB(float3 hsv) {
 			break;
 	}
 	return rgb;
+}
+
+
+uchar glVal_to_cl(uint val) {
+	if (val >= 14340) return round(0.1245790*val - 1658.44);	//>=128
+	if (val >= 13316) return round(0.0622869*val - 765.408);
+	if (val >= 12292) return round(0.0311424*val - 350.800);
+	if (val >= 11268) return round(0.0155702*val - 159.443);
+
+	float v = (float) val;
+	return round(0.0000000000000125922*pow(v,4.f) - 0.00000000026729*pow(v,3.f) + 0.00000198135*pow(v,2.f) - 0.00496681*v - 0.0000808829); 
 }

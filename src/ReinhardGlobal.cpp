@@ -32,14 +32,14 @@ bool ReinhardGlobal::runHalideGPU(Image input, Image output, const Params& param
 	return false;
 }
 
-bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Params& params, const int width, const int height) {
+bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Params& params) {
 
 	//some parameters
 	float key = 0.18f;
 	float sat = 1.6f;
 
 	char flags[1024];
-	sprintf(flags, "-cl-fast-relaxed-math -D NUM_CHANNELS=%d -Dimage_size=%d", NUM_CHANNELS, width*height);
+	sprintf(flags, "-cl-fast-relaxed-math -D NUM_CHANNELS=%d -Dimage_size=%d", NUM_CHANNELS, image_width*image_height);
 
 	if (!initCL(context_prop, params, reinhardGlobal_kernel, flags)) {
 		return false;
@@ -70,7 +70,7 @@ bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Par
 	const int num_wg = global_reduc/local_reduc;
 
 	const size_t local = preferred_wg_size;	//workgroup size for normal kernels
-	const size_t global = ceil((float)width*height/(float)local) * local;
+	const size_t global = ceil((float)image_width*image_height/(float)local) * local;
 
 	global_sizes["reduc"] = global_reduc;
 	global_sizes["normal"] = global;
@@ -81,10 +81,10 @@ bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Par
 
 	/////////////////////////////////////////////////////////////////allocating memory
 
-	mems["input"] = clCreateBuffer(m_clContext, CL_MEM_READ_ONLY, sizeof(float)*width*height*NUM_CHANNELS, NULL, &err);
+	mems["input"] = clCreateBuffer(m_clContext, CL_MEM_READ_ONLY, sizeof(float)*image_width*image_height*NUM_CHANNELS, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
-	mems["output"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*width*height*NUM_CHANNELS, NULL, &err);
+	mems["output"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*image_width*image_height*NUM_CHANNELS, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating image memory", return false);
 
 	mems["logAvgLum"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
@@ -131,7 +131,7 @@ double ReinhardGlobal::runCLKernels() {
 }
 
 
-bool ReinhardGlobal::runOpenCL(int gl_texture) {
+bool ReinhardGlobal::runOpenCL(int input_texid, int output_texid) {
 	return false;
 }
 
@@ -235,7 +235,7 @@ bool ReinhardGlobal::runReference(Image input, Image output) {
 	// Cache result
 	m_reference.width = output.width;
 	m_reference.height = output.height;
-	m_reference.data = new pixel[output.width*output.height*NUM_CHANNELS];
+	m_reference.data = new uchar[output.width*output.height*NUM_CHANNELS];
 	memcpy(m_reference.data, output.data, output.width*output.height*NUM_CHANNELS);
 
 	return true;
