@@ -19,8 +19,12 @@ http://www.ceng.metu.edu.tr/~akyuz/files/hdrgpu.pdf
 
 using namespace hdr;
 
-ReinhardLocal::ReinhardLocal() : Filter() {
+ReinhardLocal::ReinhardLocal(float _key, float _sat, float _epsilon, float _phi) : Filter() {
 	m_name = "ReinhardLocal";
+	key = _key;
+	sat = _sat;
+	epsilon = _epsilon;
+	phi = _phi;
 }
 
 bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Params& params) {
@@ -178,11 +182,6 @@ bool ReinhardLocal::runReference(Image input, Image output) {
 	reportStatus("Running reference");
 
 
-	//some parameters
-	float key = 0.18f;
-	float sat = 1.6f;
-	float epsilon = 0.05;
-	float phi = 8.0;
 	const int mipmap_levels = 8;
 
 	float logAvgLum = 0.f;
@@ -225,12 +224,12 @@ bool ReinhardLocal::runReference(Image input, Image output) {
 				int surround_x = x/pow(2, i+1);
 				int surround_y = y/pow(2, i+1);
 
-				float3 centre_pixel = { getPixel(mipmap_pyramid[i], centre_x, centre_y, 0),
-										getPixel(mipmap_pyramid[i], centre_x, centre_y, 1),
-										getPixel(mipmap_pyramid[i], centre_x, centre_y, 2)};
-				float3 surround_pixel= {getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 0),
-										getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 1),
-										getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 2)};
+				float3 centre_pixel = { getPixel(mipmap_pyramid[i], centre_x, centre_y, 0)/((float)PIXEL_RANGE),
+										getPixel(mipmap_pyramid[i], centre_x, centre_y, 1)/((float)PIXEL_RANGE),
+										getPixel(mipmap_pyramid[i], centre_x, centre_y, 2)/((float)PIXEL_RANGE)};
+				float3 surround_pixel= {getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 0)/((float)PIXEL_RANGE),
+										getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 1)/((float)PIXEL_RANGE),
+										getPixel(mipmap_pyramid[i+1], surround_x, surround_y, 2)/((float)PIXEL_RANGE)};
 				float centre_logAvgLum = getPixelLuminance(centre_pixel);
 				float surround_logAvgLum = getPixelLuminance(surround_pixel);
 
@@ -255,9 +254,11 @@ bool ReinhardLocal::runReference(Image input, Image output) {
 			float L  = (key/logAvgLum) * xyz.y;
 			float Ld = L /(1.0 + local_logAvgLum);
 
-			rgb.x = pow(rgb.x/xyz.y, sat) * Ld;
-			rgb.y = pow(rgb.y/xyz.y, sat) * Ld;
-			rgb.z = pow(rgb.z/xyz.y, sat) * Ld;
+			rgb.x = (pow(rgb.x/xyz.y, sat) * Ld)*PIXEL_RANGE;
+			rgb.y = (pow(rgb.y/xyz.y, sat) * Ld)*PIXEL_RANGE;
+			rgb.z = (pow(rgb.z/xyz.y, sat) * Ld)*PIXEL_RANGE;
+
+			//printf("%f, %f, %f\n", rgb.x, rgb.y, rgb.z);
 
 			setPixel(output, x, y, 0, rgb.x);
 			setPixel(output, x, y, 1, rgb.y);
