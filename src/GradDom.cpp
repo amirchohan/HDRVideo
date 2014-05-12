@@ -19,14 +19,6 @@ GradDom::GradDom() : Filter() {
 	m_name = "GradDom";
 }
 
-bool GradDom::runHalideCPU(Image input, Image output, const Params& params) {
-	return false;
-}
-
-bool GradDom::runHalideGPU(Image input, Image output, const Params& params) {
-	return false;
-}
-
 bool GradDom::setupOpenCL(cl_context_properties context_prop[], const Params& params) {
 	return false;
 }

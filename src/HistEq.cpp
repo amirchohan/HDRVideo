@@ -16,14 +16,6 @@ HistEq::HistEq() : Filter() {
 	m_name = "HistEq";
 }
 
-bool HistEq::runHalideCPU(Image input, Image output, const Params& params) {
-	return false;
-}
-
-bool HistEq::runHalideGPU(Image input, Image output, const Params& params) {
-	return false;
-}
-
 bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& params) {
 	char flags[1024];
 	int hist_size = PIXEL_RANGE+1;
@@ -112,20 +104,20 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 
 	reportStatus("2D kernel sizes: Local=(%lu, %lu) Global=(%lu, %lu)", local2Dsize[0], local2Dsize[1], global2Dsize[0], global2Dsize[1]);
 
-	local_sizes["reduc"]  = local_reduc;
-	global_sizes["reduc"] = global_reduc;
+	oneDlocal_sizes["reduc"]  = local_reduc;
+	oneDglobal_sizes["reduc"] = global_reduc;
 
-	local_sizes["merge_hist"] = merge_hist_local;
-	global_sizes["merge_hist"] = merge_hist_global;
+	oneDlocal_sizes["merge_hist"] = merge_hist_local;
+	oneDglobal_sizes["merge_hist"] = merge_hist_global;
 
-	local_sizes["hist_cdf"] = local_reduc;
-	global_sizes["hist_cdf"] = hist_size;
+	oneDlocal_sizes["hist_cdf"] = local_reduc;
+	oneDglobal_sizes["hist_cdf"] = hist_size;
 
-	local_sizes["normal"] = local;
-	global_sizes["normal"] = global;
+	oneDlocal_sizes["normal"] = local;
+	oneDglobal_sizes["normal"] = global;
 
-	twoDlocal_sizes["transfer_data"] = local2Dsize;
-	twoDglobal_sizes["transfer_data"] = global2Dsize;
+	local_sizes["transfer_data"] = local2Dsize;
+	global_sizes["transfer_data"] = global2Dsize;
 
 	/////////////////////////////////////////////////////////////////allocating memory
 
@@ -168,7 +160,7 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 
 	err  = clSetKernelArg(kernels["hist"], 0, sizeof(cl_mem), &mems["partial_hist"]);
 	err |= clSetKernelArg(kernels["hist"], 1, sizeof(cl_mem), &mems["hist"]);
-	err |= clSetKernelArg(kernels["hist"], 2, sizeof(unsigned int)*local_sizes["merge_hist"], NULL);
+	err |= clSetKernelArg(kernels["hist"], 2, sizeof(unsigned int)*oneDlocal_sizes["merge_hist"], NULL);
 	err |= clSetKernelArg(kernels["hist"], 3, sizeof(unsigned int), &num_wg_reduc);
 	CHECK_ERROR_OCL(err, "setting merge_hist arguments", return false);
 
@@ -190,19 +182,19 @@ double HistEq::runCLKernels() {
 	//let it begin
 	double start = omp_get_wtime();
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["transfer_data"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["transfer_data"], 2, NULL, global_sizes["transfer_data"], local_sizes["transfer_data"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing transfer_data kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["partial_hist"], 1, NULL, &global_sizes["reduc"], &local_sizes["reduc"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["partial_hist"], 1, NULL, &oneDglobal_sizes["reduc"], &oneDlocal_sizes["reduc"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing partial_hist kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["hist"], 1, NULL, &global_sizes["merge_hist"], &local_sizes["merge_hist"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist"], 1, NULL, &oneDglobal_sizes["merge_hist"], &oneDlocal_sizes["merge_hist"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing merge_hist kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_cdf"], 1, NULL, &global_sizes["hist_cdf"], &local_sizes["hist_cdf"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_cdf"], 1, NULL, &oneDglobal_sizes["hist_cdf"], &oneDlocal_sizes["hist_cdf"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing hist_cdf kernel", return false);
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_eq"], 2, NULL, twoDglobal_sizes["transfer_data"], twoDlocal_sizes["transfer_data"], 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["hist_eq"], 2, NULL, global_sizes["transfer_data"], local_sizes["transfer_data"], 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "enqueuing histogram_equalisation kernel", return false);
 
 	err = clFinish(m_queue);
@@ -218,30 +210,6 @@ bool HistEq::runOpenCL(int input_texid, int output_texid) {
 	CHECK_ERROR_OCL(err, "acquiring GL objects", return false);
 
 	double runTime = runCLKernels();
-
-	/*float* debug = (float*) calloc(image_height*image_width*NUM_CHANNELS, sizeof(float));
-
-	err = clEnqueueReadBuffer(m_queue, mems["image"], CL_TRUE, 0, sizeof(float)*image_height*image_width*NUM_CHANNELS, debug, 0, NULL, NULL );
-	CHECK_ERROR_OCL(err, "reading image memory", return false);*/
-
-	/*int j=1;
-	for (int i=0; j<256; i++) {
-		if (i%3!=0) {
-			if (debug[i] != j)
-				reportStatus("{%f, %d}, ", debug[i], j);
-			j++;
-		}
-	}*/
-
-
-	/*for (int y = 0; y < image_height; y++) {
-		for (int x = 0; x < image_width; x++) {
-			for (int c =0 ; c < NUM_CHANNELS; c++) {
-				if (debug[(x + y*image_width)*NUM_CHANNELS + c] != 0)
-					reportStatus("%d, %d, %d, %f", x, y, c, debug[(x + y*image_width)*NUM_CHANNELS + c]);
-			}
-		}
-	}*/
 
 	err = clEnqueueReleaseGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "releasing GL objects", return false);

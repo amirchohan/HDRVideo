@@ -70,8 +70,6 @@ public:
 	virtual void clearReferenceCache();
 	virtual const char* getName() const;
 
-	virtual bool runHalideCPU(Image input, Image output, const Params& params) = 0;
-	virtual bool runHalideGPU(Image input, Image output, const Params& params) = 0;
 	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params) = 0;
 	virtual double runCLKernels() = 0;
 	virtual bool runOpenCL(int input_texid, int output_texid) = 0;
@@ -79,6 +77,8 @@ public:
 	virtual bool cleanupOpenCL() = 0;
 	virtual bool runReference(Image input, Image output) = 0;
 	virtual Image runFilter(Image input, Params params, unsigned int method);
+	virtual bool kernel1DSizes(const char* kernel_name);
+	virtual bool kernel2DSizes(const char* kernel_name);
 	virtual void setImageSize(int width, int height);
 	virtual void setImageTextures(GLuint input_texture, GLuint output_texture);
 
@@ -97,12 +97,15 @@ protected:
 	cl_program m_program;
 	cl_mem mem_images[2];
 
+	size_t max_cu;	//max compute units
+
 	std::map<std::string, cl_mem> mems;
 	std::map<std::string, cl_kernel> kernels;
-	std::map<std::string, size_t> local_sizes;
-	std::map<std::string, size_t> global_sizes;
-	std::map<std::string, size_t*> twoDlocal_sizes;
-	std::map<std::string, size_t*> twoDglobal_sizes;
+	std::map<std::string, size_t> oneDlocal_sizes;
+	std::map<std::string, size_t> oneDglobal_sizes;
+	std::map<std::string, size_t*> local_sizes;
+	std::map<std::string, size_t*> global_sizes;
+
 
 
 	int image_width;

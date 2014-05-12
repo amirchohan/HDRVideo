@@ -69,7 +69,11 @@ bool Filter::initCL(cl_context_properties context_prop[], const Params& params, 
 	reportStatus("CL_DEVICE_GLOBAL_MEM_SIZE: %lu bytes", device_size);
 
 	clGetDeviceInfo(m_device, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(device_size), &device_size, NULL);
-	reportStatus("CL_DEVICE_GLOBAL_MEM_SIZE: %lu bytes", device_size);
+	reportStatus("CL_DEVICE_LOCAL_MEM_SIZE: %lu bytes", device_size);
+
+	clGetDeviceInfo(m_device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(size_t), &max_cu, NULL);
+	reportStatus("CL_DEVICE_MAX_COMPUTE_UNITS: %lu", max_cu);
+
 
 	// Initialize SDL2
 	/*SDL_Init(SDL_INIT_VIDEO);
@@ -189,12 +193,6 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 		case METHOD_REFERENCE:
 			runReference(input, output);
 			break;
-		case METHOD_HALIDE_CPU:
-			runHalideCPU(input, output, params);
-			break;
-		case METHOD_HALIDE_GPU:
-			runHalideGPU(input, output, params);
-			break;
 		case METHOD_OPENCL:
 			image_width = input.width;
 			image_height = input.height;
@@ -206,6 +204,78 @@ Image Filter::runFilter(Image input, Params params, unsigned int method) {
 			assert(false && "Invalid method.");
 	}
 	return output;
+}
+
+bool Filter::kernel1DSizes(const char* kernel_name) {
+	reportStatus("---------------------------------Kernel %s:", kernel_name);
+
+	cl_int err;
+
+	size_t max_wg_size;	//max workgroup size for the kernel
+	err = clGetKernelWorkGroupInfo (kernels[kernel_name], m_device,
+		CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &max_wg_size, NULL);
+	CHECK_ERROR_OCL(err, "getting CL_KERNEL_WORK_GROUP_SIZE", return false);
+	reportStatus("CL_KERNEL_WORK_GROUP_SIZE: %lu", max_wg_size);
+
+	size_t preferred_wg_size;	//workgroup size should be a multiple of this
+	err = clGetKernelWorkGroupInfo (kernels[kernel_name], m_device,
+		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &preferred_wg_size, NULL);
+	CHECK_ERROR_OCL(err, "getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE", return false);
+	reportStatus("CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: %lu", preferred_wg_size);
+
+	size_t* local = (size_t*) calloc(2, sizeof(size_t));
+	size_t* global = (size_t*) calloc(2, sizeof(size_t));
+	local[0] = preferred_wg_size;	//workgroup size for normal kernels
+	global[0] = preferred_wg_size*max_cu;
+
+	local_sizes[kernel_name] = local;
+	global_sizes[kernel_name] = global;
+
+	reportStatus("Kernel sizes: Local=%lu Global=%lu", local[0], global[0]);
+}
+
+
+bool Filter::kernel2DSizes(const char* kernel_name) {
+	reportStatus("---------------------------------Kernel %s:", kernel_name);
+
+	cl_int err;
+
+	size_t max_wg_size;	//max workgroup size for the kernel
+	err = clGetKernelWorkGroupInfo (kernels[kernel_name], m_device,
+		CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &max_wg_size, NULL);
+	CHECK_ERROR_OCL(err, "getting CL_KERNEL_WORK_GROUP_SIZE", return false);
+	reportStatus("CL_KERNEL_WORK_GROUP_SIZE: %lu", max_wg_size);
+
+	size_t preferred_wg_size;	//workgroup size should be a multiple of this
+	err = clGetKernelWorkGroupInfo (kernels[kernel_name], m_device,
+		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &preferred_wg_size, NULL);
+	CHECK_ERROR_OCL(err, "getting CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE", return false);
+	reportStatus("CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: %lu", preferred_wg_size);
+
+	size_t* local = (size_t*) calloc(2, sizeof(size_t));
+	size_t* global = (size_t*) calloc(2, sizeof(size_t));
+
+	int i=0;
+	local[0] = 1;
+	local[1] = 1;
+	while (local[0]*local[1] <= preferred_wg_size) {
+		local[i%2] *= 2;
+		i++;
+	}
+	if (local[0]*local[1] > max_wg_size) {
+		local[i%2] /= 2;
+	}
+
+	global[0] = local[0]*max_cu;
+	global[1] = local[1]*max_cu;
+
+	global[0] = ceil((float)global[0]/(float)local[0])*local[0];
+	global[1] = ceil((float)global[1]/(float)local[1])*local[1];
+
+	local_sizes[kernel_name] = local;
+	global_sizes[kernel_name] = global;
+	
+	reportStatus("Kernel sizes: Local=(%lu, %lu) Global=(%lu, %lu)", local[0], local[1], global[0], global[1]);
 }
 
 

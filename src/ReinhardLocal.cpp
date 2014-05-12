@@ -23,14 +23,6 @@ ReinhardLocal::ReinhardLocal() : Filter() {
 	m_name = "ReinhardLocal";
 }
 
-bool ReinhardLocal::runHalideCPU(Image input, Image output, const Params& params) {
-	return false;
-}
-
-bool ReinhardLocal::runHalideGPU(Image input, Image output, const Params& params) {
-	return false;
-}
-
 bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Params& params) {
 	return false;
 }
