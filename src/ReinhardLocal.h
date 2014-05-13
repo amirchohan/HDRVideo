@@ -20,5 +20,11 @@ protected:
 	float epsilon;
 	float phi;
 
+	//information regarding all mipmap levels
+	int num_mipmaps;
+	int* m_width;		//at index i this contains the width of the mipmap at index i
+	int* m_height;		//at index i this contains the height of the mipmap at index i
+	int* m_offset;		//at index i this contains the start point to store the mipmap at level i
+
 };
 }

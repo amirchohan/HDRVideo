@@ -20,7 +20,7 @@
 
 
 JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint width, jint height, jint in_tex, jint out_tex) {
-	filter = new ReinhardGlobal();
+	filter = new ReinhardGlobal(0.36f, 1.05f);
 	filter->setStatusCallback(updateStatus);
 
 	EGLDisplay mEglDisplay;

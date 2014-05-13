@@ -21,4 +21,4 @@ adb logcat -c
 adb shell am start -n com.uob.achohan.hdr/com.uob.achohan.hdr.HDR
 
 # Display log (Ctrl-C when finished)
-adb logcat | grep "D/hdr\|F/libc\|W/WindowManager\|E/libEGL"
+adb logcat | grep "D/hdr\|F/libc\|E/libEGL\|W/Adreno-ES20"

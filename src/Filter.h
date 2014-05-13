@@ -89,7 +89,7 @@ protected:
 	Image m_reference;
 	int (*m_statusCallback)(const char*, va_list args);
 	void reportStatus(const char *format, ...) const;
-	virtual bool verify(Image input, Image output, float tolerance=1.f);
+	virtual bool verify(Image input, Image output, float tolerance=4.f);
 
 	cl_device_id m_device;
 	cl_context m_clContext;

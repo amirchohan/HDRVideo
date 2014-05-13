@@ -113,6 +113,9 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 	private int display_width;
 	private int display_height;
 
+	long startTime = System.nanoTime();
+	int frames = 0;
+
 	MyGLRenderer (MyGLSurfaceView view, Point display_dim) {
 		mView = view;
 		float[] vertexCoordTmp = {
@@ -151,7 +154,13 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		mCamera = Camera.open();
 
 		Camera.Parameters param = mCamera.getParameters();
-		param.setPictureSize(640, 480);
+		List<Size> psize = param.getSupportedPictureSizes();
+		if ( psize.size() > 0 ) {
+			for (int i = 0; i < psize.size(); i++ ) {
+				Log.d(TAG, psize.get(i).width + "x" + psize.get(i).height);
+			}
+		}
+		param.setPictureSize(1280, 720);
 		mCamera.setParameters(param);
 
 		image_width = mCamera.getParameters().getPictureSize().width;
@@ -181,9 +190,9 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		
 		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, targetFramebuffer.get(0));
 		int fbret = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER);
-	    if (fbret != GLES20.GL_FRAMEBUFFER_COMPLETE) {
-	      Log.d(TAG, "unable to bind fbo" + fbret);
-	    }
+		if (fbret != GLES20.GL_FRAMEBUFFER_COMPLETE) {
+		  Log.d(TAG, "unable to bind fbo" + fbret);
+		}
 		GLES20.glViewport(0, 0, image_width, image_height);
 		GLES20.glClear( GLES20.GL_COLOR_BUFFER_BIT );
 
@@ -210,9 +219,15 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		GLES20.glEnableVertexAttribArray(tch);
 
 		GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[0]);
+		GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D);
+		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
 		GLES20.glFinish();
 
 		processFrame(targetTex[0], targetTex[1]);
+
+		logFrame();
 
 		GLES20.glViewport(0, 0, display_width, display_height);
 
@@ -267,38 +282,13 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
 		GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
 
-		/*ByteBuffer d = ByteBuffer.allocate(image_height*image_width*4);
-
-		for (int y = 0; y < image_height; y++) {
-			for (int x = 0; x < image_width; x++) {
-				d.put((x + y*image_width)*4 + 0, (byte) 0);
-				d.put((x + y*image_width)*4 + 1, (byte) 0);
-				d.put((x + y*image_width)*4 + 2, (byte) 0);
-				d.put((x + y*image_width)*4 + 3, (byte) 0);
-
-				for (int c =0 ; c < 4; c++) {
-					//d.put((x + y*image_width)*4 + c, (byte) 255);
-				}
-			}
-		}
-
-		d.put(0, (byte) 0);
-		int j=1;
-		for (int i=1; j<256; i++) {
-			if (i%3!=0) {
-				//Log.d(TAG, i +" "+j);
-				d.put(i, (byte) j);
-				j++;
-			}
-		}*/
-
 		GLES20.glGenTextures ( 2, targetTex, 0 );
 		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[0]);
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR);
+		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR_MIPMAP_NEAREST);
 		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR);
 		GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, image_width, image_height, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+		GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D);
 		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-
 
 		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, targetTex[1]);
 		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR);
@@ -311,6 +301,14 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, targetFramebuffer.get(0));
 		GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, targetTex[0], 0);
 		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+	}
+
+	protected void checkGlError(String op) {
+		int error;
+		while ((error = GLES20.glGetError()) != GLES20.GL_NO_ERROR) {
+			Log.e(TAG, op + ": glError " + error);
+			throw new RuntimeException(op + ": glError " + error);
+		}
 	}
 
 
@@ -330,7 +328,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 			Log.v("Shader", "Could not compile vshader:"+GLES20.glGetShaderInfoLog(vshader));
 			GLES20.glDeleteShader(vshader);
 			vshader = 0;
-	 	}
+		}
 
 		int fshader = GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER);
 		GLES20.glShaderSource(fshader, fragment_shader);
@@ -368,6 +366,16 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 	public void updateStatus(String text) {
 		Log.d(TAG, text);
 	}
+
+	public void logFrame() {
+		frames++;
+		if(System.nanoTime() - startTime >= 1000000000) {
+			Log.d(TAG, "FPS: " + frames);
+			frames = 0;
+			startTime = System.nanoTime();
+		}
+	}
+
 
 	public static native void initCL(int image_width, int image_height, int input_texid, int output_texid);
 	public static native void processFrame(int input_texid, int output_texid);
