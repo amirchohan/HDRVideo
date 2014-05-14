@@ -90,16 +90,15 @@ kernel void finalReduc(	__global float* logAvgLum_acc,
 }
 
 
-kernel void reinhardLocal(	__read_only image2d_t input_image,
-							__write_only image2d_t output_image,
+kernel void reinhardLocal(	__global float* Ld_array,
 							__global float* logLumMips,
 							__global int* m_width,
 							__global int* m_height,
 							__global int* m_offset,
 							__global float* logAvgLum_acc,
-							const float key,
-							const float sat) {
-	float logAvgLum = logAvgLum_acc[0];
+							const float key) {
+
+	float factor = key/logAvgLum_acc[0];
 
 	const float scale[7] = {1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 64.f};
 	int2 pos, centre_pos, surround_pos;
@@ -113,8 +112,8 @@ kernel void reinhardLocal(	__read_only image2d_t input_image,
 				centre_pos = surround_pos;
 				surround_pos = centre_pos/2;
 
-				float centre_logAvgLum = logLumMips[centre_pos.x + centre_pos.y*m_width[i] + m_offset[i]]*(key/logAvgLum);
-				float surround_logAvgLum = logLumMips[surround_pos.x + surround_pos.y*m_width[i+1] + m_offset[i+1]]*(key/logAvgLum);
+				float centre_logAvgLum = logLumMips[centre_pos.x + centre_pos.y*m_width[i] + m_offset[i]]*factor;
+				float surround_logAvgLum = logLumMips[surround_pos.x + surround_pos.y*m_width[i+1] + m_offset[i+1]]*factor;
 
 				float logAvgLum_diff = centre_logAvgLum - surround_logAvgLum;
 				logAvgLum_diff = logAvgLum_diff >= 0 ? logAvgLum_diff : -logAvgLum_diff;
@@ -125,7 +124,21 @@ kernel void reinhardLocal(	__read_only image2d_t input_image,
 				}
 				else local_logAvgLum = surround_logAvgLum;
 			}
+			Ld_array[pos.x + pos.y*WIDTH] = factor /(1.0 + local_logAvgLum);
+		}
+	}
+}
 
+kernel void tonemap(__read_only image2d_t input_image,
+					__write_only image2d_t output_image,
+					__global float* Ld_array,
+					const float sat) {
+
+	int2 pos;
+	uint4 pixel;
+	float3 rgb, xyz;
+	for (pos.y = get_global_id(1); pos.y < HEIGHT; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < WIDTH; pos.x += get_global_size(0)) {
 			pixel = read_imageui(input_image, sampler, pos);
 			rgb.x = GL_to_CL(pixel.x);
 			rgb.y = GL_to_CL(pixel.y);
@@ -133,8 +146,7 @@ kernel void reinhardLocal(	__read_only image2d_t input_image,
 
 			xyz = RGBtoXYZ(rgb);
 
-			float L  = (key/logAvgLum) * xyz.y;
-			float Ld = L /(1.0 + local_logAvgLum);
+			float Ld  = Ld_array[pos.x + pos.y*WIDTH] * xyz.y;
 
 			pixel.x = clamp((pow(rgb.x/xyz.y, sat)*Ld)*255.f, 0.f, 255.f);
 			pixel.y = clamp((pow(rgb.y/xyz.y, sat)*Ld)*255.f, 0.f, 255.f);
@@ -143,6 +155,7 @@ kernel void reinhardLocal(	__read_only image2d_t input_image,
 		}
 	}
 }
+
 
 
 float3 RGBtoXYZ(float3 rgb) {
@@ -154,12 +167,12 @@ float3 RGBtoXYZ(float3 rgb) {
 }
 
 float GL_to_CL(uint val) {
-	/*if (val >= 14340) return round(0.1245790*val - 1658.44);	//>=128
+	if (val >= 14340) return round(0.1245790*val - 1658.44);	//>=128
 	if (val >= 13316) return round(0.0622869*val - 765.408);	//>=64
 	if (val >= 12292) return round(0.0311424*val - 350.800);	//>=32
 	if (val >= 11268) return round(0.0155702*val - 159.443);	//>=16
 
 	float v = (float) val;
-	return round(0.0000000000000125922*pow(v,4.f) - 0.00000000026729*pow(v,3.f) + 0.00000198135*pow(v,2.f) - 0.00496681*v - 0.0000808829);*/
-	return (float)val;
+	return round(0.0000000000000125922*pow(v,4.f) - 0.00000000026729*pow(v,3.f) + 0.00000198135*pow(v,2.f) - 0.00496681*v - 0.0000808829);
+	//return (float)val;
 }

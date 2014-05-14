@@ -20,7 +20,7 @@
 
 
 JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv, jobject obj, jint width, jint height, jint in_tex, jint out_tex) {
-	filter = new ReinhardGlobal(0.36f, 1.05f);
+	filter = new ReinhardLocal(0.18f, 1.1f);
 	filter->setStatusCallback(updateStatus);
 
 	EGLDisplay mEglDisplay;
@@ -50,8 +50,8 @@ JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_initCL(JNIEnv* jenv
 	return;
 }
 
-JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_processFrame(JNIEnv* jenv, jobject obj, jint input_texid, jint output_texid) {
-	filter->runOpenCL(input_texid, output_texid);
+JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_processFrame(JNIEnv* jenv, jobject obj, jint input_texid, jint output_texid, jboolean recomputeMapping) {
+	filter->runOpenCL(input_texid, output_texid, recomputeMapping);
 }
 
 JNIEXPORT void JNICALL Java_com_uob_achohan_hdr_MyGLRenderer_killCL(JNIEnv* jenv, jobject obj) {

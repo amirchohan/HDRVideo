@@ -115,6 +115,8 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
 	long startTime = System.nanoTime();
 	int frames = 0;
+	private boolean recomputeMapping=true;
+	private long lastRecomputeTime = System.nanoTime();
 
 	MyGLRenderer (MyGLSurfaceView view, Point display_dim) {
 		mView = view;
@@ -225,7 +227,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
 		GLES20.glFinish();
 
-		processFrame(targetTex[0], targetTex[1]);
+		processFrame(targetTex[0], targetTex[1], recomputeMapping);
 
 		logFrame();
 
@@ -369,6 +371,11 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
 	public void logFrame() {
 		frames++;
+		if(System.nanoTime() - lastRecomputeTime >= 500000000) {
+			recomputeMapping = true;
+			lastRecomputeTime = System.nanoTime();
+		}
+		else recomputeMapping = false;
 		if(System.nanoTime() - startTime >= 1000000000) {
 			Log.d(TAG, "FPS: " + frames);
 			frames = 0;
@@ -378,7 +385,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
 
 	public static native void initCL(int image_width, int image_height, int input_texid, int output_texid);
-	public static native void processFrame(int input_texid, int output_texid);
+	public static native void processFrame(int input_texid, int output_texid, boolean recomputeMapping);
 	public static native void killCL();
 
 

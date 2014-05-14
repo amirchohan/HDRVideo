@@ -1,79 +1,223 @@
 
+float GL_to_CL(uint val);
 float3 RGBtoXYZ(float3 rgb);
 
-kernel void computeLogAvgLum( __global read_only float* image, __global float* logAvgLum, __global float* Ywhite) {
-	//this kernel computes logAvgLum and Ywhite by performing reduction
-	//the results are stored in an array of size num_work_groups
+const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
-	int gid = get_global_id(0);	//id in the entire global memory
+//this kernel computes logLum
+kernel void computeLogLum( 	__read_only image2d_t image,
+							__global float* logLum) {
 
+	int2 pos;
+	uint4 pixel;
 	float lum;
-	float Ywhite_acc = 0.f;		//maximum luminance in the image
-	float logAvgLum_acc = 0.f;
-	while (gid < image_size) {
-		lum = image[gid*4 + 0]*0.2126 + image[gid*4 + 1]*0.7152 + image[gid*4 + 2]*0.0722;
+	for (pos.y = get_global_id(1); pos.y < HEIGHT; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < WIDTH; pos.x += get_global_size(0)) {
+			pixel = read_imageui(image, sampler, pos);
+			lum = GL_to_CL(pixel.x)*0.2126
+				+ GL_to_CL(pixel.y)*0.7152
+				+ GL_to_CL(pixel.z)*0.0722;
+			logLum[pos.x + pos.y*WIDTH] = log(lum + 0.000001);
+		}
+	}
+}
 
-		Ywhite_acc = (lum > Ywhite_acc) ? lum : Ywhite_acc;
-		logAvgLum_acc += log(lum + 0.000001);
+kernel void channel_mipmap(	__global float* mipmap,	//array containing all the mipmap levels
+							const int prev_width,	//width of the previous mipmap
+							const int prev_offset, 	//start point of the previous mipmap 
+							const int m_width,		//width of the mipmap being generated
+							const int m_height,		//height of the mipmap being generated
+							const int m_offset) { 	//start point to store the current mipmap
+	int2 pos;
+	for (pos.y = get_global_id(1); pos.y < m_height; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < m_width; pos.x += get_global_size(0)) {
+			int _x = 2*pos.x;
+			int _y = 2*pos.y;
+			mipmap[pos.x + pos.y*m_width + m_offset] = 	(mipmap[_x + _y*prev_width + prev_offset]
+														+ mipmap[_x+1 + _y*prev_width + prev_offset]
+														+ mipmap[_x + (_y+1)*prev_width + prev_offset]
+														+ mipmap[(_x+1) + (_y+1)*prev_width + prev_offset])/4.f;
+		}
+	}
+}
 
-		gid += get_global_size(0);
+//computing gradient magnitude using central differences at level k
+kernel void gradient_mag(	__global float* lum,		//array containing all the luminance mipmap levels
+							__global float* gradient,	//array to store all the gradients at different levels
+							const int g_width,			//width of the gradient being generated
+							const int g_height,			//height of the gradient being generated
+							const int offset,			//start point to store the current gradient
+							const float divider) { 	
+	//k_av_grad = 0.f;
+	int x_west;
+	int x_east;
+	int y_north;
+	int y_south;
+	float x_grad;
+	float y_grad;
+	int2 pos;
+	for (pos.y = get_global_id(1); pos.y < g_height; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < g_width; pos.x += get_global_size(0)) {
+			x_west  = clamp(pos.x-1, 0, g_width-1);
+			x_east  = clamp(pos.x+1, 0, g_width-1);
+			y_north = clamp(pos.y-1, 0, g_height-1);
+			y_south = clamp(pos.y+1, 0, g_height-1);
+
+			x_grad = (lum[x_west + pos.y*g_width + offset]  - lum[x_east + pos.y*g_width + offset])/divider;
+			y_grad = (lum[pos.x + y_south*g_width + offset] - lum[pos.x + y_north*g_width + offset])/divider;
+
+			gradient[pos.x + pos.y*g_width + offset] = sqrt(pow(x_grad, 2.f) + pow(y_grad, 2.f));
+		}
+	}
+}
+
+
+kernel void partialReduc(	__global float* gradient,
+							__global float* gradient_partial_sum,
+							__local float* gradient_loc,
+							const int height,
+							const int width,
+							const int g_offset) {
+
+	float gradient_acc = 0.f;
+
+	for (int gid = get_global_id(0); gid < height*width; gid += get_global_size(0)) {
+		gradient_acc += gradient[g_offset + gid];
 	}
 
-	__local float Ywhite_loc[32];
-	__local float logAvgLum_loc[32];
-
-	int lid = get_local_id(0);	//id within the work group
-	Ywhite_loc[lid] = Ywhite_acc;
-	logAvgLum_loc[lid] = logAvgLum_acc;
+	const int lid = get_local_id(0);	//local id in one dimension
+	gradient_loc[lid] = gradient_acc;
 
 	// Perform parallel reduction
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	for(int offset = get_local_size(0)/2; offset > 0; offset = offset/2) {
 		if (lid < offset) {
-			Ywhite_loc[lid] = (Ywhite_loc[lid+offset] > Ywhite_loc[lid]) ? Ywhite_loc[lid+offset] : Ywhite_loc[lid];
-			logAvgLum_loc[lid] += logAvgLum_loc[lid + offset];
+			gradient_loc[lid] += gradient_loc[lid + offset];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
 
+	const int group_id = get_group_id(0);
 	if (lid == 0) {
-		Ywhite[get_group_id(0)] = Ywhite_loc[0];
-		logAvgLum[get_group_id(0)] = logAvgLum_loc[0];
-	}
-
-}
-
-kernel void global_TMO( __global float* input, __global float* output, __global float* logAvgLum_acc, __global float* Ywhite_acc) {
-	float key = 1.0f;
-	float sat = 1.5f;
-
-	float logAvgLum = logAvgLum_acc[0]+logAvgLum_acc[1]+logAvgLum_acc[2]+logAvgLum_acc[3]+logAvgLum_acc[4]+logAvgLum_acc[5];
-	logAvgLum = exp(logAvgLum/image_size);
-
-	float Ywhite = 0.0f;
-	for (int i=0; i<6; i++) {
-		if (Ywhite < Ywhite_acc[i]) Ywhite = Ywhite_acc[i];
-	}
-
-	const int gid = get_global_id(0);
-	if (gid < image_size) {
-		float3 rgb, xyz;
-		rgb.x = input[gid*4 + 0];
-		rgb.y = input[gid*4 + 1];
-		rgb.z = input[gid*4 + 2];
-
-		xyz = RGBtoXYZ(rgb);
-
-		float Y  = (key/logAvgLum) * xyz.y;
-		float Yd = (Y * (1.0 + Y/(Ywhite * Ywhite)) )/(1.0 + Y);
-
-		output[gid*4 + 0] = clamp(pow(rgb.x/xyz.y, sat) * Yd, 0.f, 1.f);
-		output[gid*4 + 1] = clamp(pow(rgb.y/xyz.y, sat) * Yd, 0.f, 1.f);
-		output[gid*4 + 2] = clamp(pow(rgb.z/xyz.y, sat) * Yd, 0.f, 1.f);
-		output[gid*4 + 3] = 0.f;
+		gradient_partial_sum[group_id] = gradient_loc[0];
 	}
 }
+
+
+kernel void finalReduc(	__global float* gradient_partial_sum,
+						__global float* alphas,
+						const int mipmap_level,
+						const int width,
+						const int height,
+						const unsigned int num_reduc_bins) {
+	if (get_global_id(0)==0) {
+
+		float sum_grads = 0.f;
+	
+		for (int i=0; i<num_reduc_bins; i++) {
+			sum_grads += gradient_partial_sum[i];
+		}
+		alphas[mipmap_level] = ADJUST_ALPHA*exp(sum_grads/((float)width*height));
+	}
+	else return;
+}
+
+
+kernel void coarsest_level_attenfunc(	__global float* gradient,
+										__global float* atten_func,
+										__global float* k_alpha,
+										const int width,
+										const int height,
+										const int offset) {
+
+	for (int gid = get_global_id(0); gid < width*height; gid+= get_global_size(0) ) {
+		atten_func[gid+offset] = (k_alpha[0]/gradient[gid+offset])*pow(gradient[gid+offset]/k_alpha[0], (float)BETA);
+	}
+}
+
+kernel void atten_func(	__global float* gradient,
+						__global float* atten_func,
+						__global float* k_alpha,
+						const int width,
+						const int height,
+						const int offset,
+						const int c_width,
+						const int c_height,
+						const int c_offset,
+						const int level) {
+	int2 pos;
+	int2 c_pos;
+	int2 neighbour;
+	float k_xy_atten_func;
+	float k_xy_scale_factor;
+	for (pos.y = get_global_id(1); pos.y < height; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < width; pos.x += get_global_size(0)) {
+			if (gradient[pos.x + pos.y*width + offset] != 0) {
+
+				c_pos = pos/2;	//position in the coarser grid
+
+				//neighbours need to be left or right dependent on where we are
+				neighbour.x = (pos.x & 1) ? 1 : -1;
+				neighbour.y = (pos.y & 1) ? 1 : -1;
+
+
+				//this stops us from going out of bounds
+				if ((c_pos.x + neighbour.x) < 0) neighbour.x = 0;
+				if ((c_pos.y + neighbour.y) < 0) neighbour.y = 0;
+				if ((c_pos.x + neighbour.x) >= c_width)  neighbour.x = 0;
+				if ((c_pos.y + neighbour.y) >= c_height) neighbour.y = 0;
+				if (c_pos.x == c_width)  c_pos.x -= 1;
+				if (c_pos.y == c_height) c_pos.y -= 1;
+
+				k_xy_atten_func = 9.0*atten_func[c_pos.x 				+ c_pos.y					*c_width	+ c_offset]
+								+ 3.0*atten_func[c_pos.x+neighbour.x 	+ c_pos.y					*c_width	+ c_offset]
+								+ 3.0*atten_func[c_pos.x 				+ (c_pos.y+neighbour.y)		*c_width	+ c_offset]
+								+ 1.0*atten_func[c_pos.x+neighbour.x 	+ (c_pos.y+neighbour.y)		*c_width	+ c_offset];
+
+				k_xy_scale_factor = (k_alpha[level]/gradient[pos.x + pos.y*width + offset])*pow(gradient[pos.x + pos.y*width + offset]/k_alpha[level], (float)BETA);
+				atten_func[pos.x + pos.y*width + offset] = (1.f/16.f)*(k_xy_atten_func)*k_xy_scale_factor;
+			}
+			else atten_func[pos.x + pos.y*width + offset] = 0.f;
+		}
+	}
+}
+
+
+kernel void grad_atten(	__global float* atten_grad_x,
+						__global float* atten_grad_y,
+						__global float* lum,
+						__global float* atten_func) {
+	int2 pos;
+	float2 grad;
+	for (pos.y = get_global_id(1); pos.y < HEIGHT; pos.y += get_global_size(1)) {
+		for (pos.x = get_global_id(0); pos.x < WIDTH; pos.x += get_global_size(0)) {	
+			grad.x = (pos.x < WIDTH-1 ) ? (lum[pos.x+1 +  	 pos.y*WIDTH] - lum[pos.x + pos.y*WIDTH]) : 0;
+			grad.y = (pos.y < HEIGHT-1) ? (lum[pos.x   + (pos.y+1)*WIDTH] - lum[pos.x + pos.y*WIDTH]) : 0;
+			atten_grad_x[pos.x + pos.y*WIDTH] = grad.x*atten_func[pos.x + pos.y*WIDTH];
+			atten_grad_y[pos.x + pos.y*WIDTH] = grad.y*atten_func[pos.x + pos.y*WIDTH];
+		}
+	}
+}
+
+
+kernel void divG(	__global float* atten_grad_x,
+					__global float* atten_grad_y,
+					__global float* div_grad) {
+	div_grad[0] = 0;
+	int2 pos;
+	for (pos.x = get_global_id(0) + 1; pos.x < WIDTH; pos.x += get_global_size(0)) {
+		div_grad[pos.x] = atten_grad_x[pos.x] - atten_grad_x[pos.x-1];
+	}
+	for (pos.y = get_global_id(1) + 1; pos.y < HEIGHT; pos.y += get_global_size(1)) {
+		div_grad[pos.y*WIDTH] = atten_grad_y[pos.y*WIDTH] - atten_grad_y[(pos.y-1)*WIDTH];
+		for (pos.x = get_global_id(0)+1; pos.x < WIDTH; pos.x += get_global_size(0)) {
+			div_grad[pos.x + pos.y*WIDTH] 	= (atten_grad_x[pos.x + pos.y*WIDTH] - atten_grad_x[(pos.x-1) + pos.y*WIDTH])
+											+ (atten_grad_y[pos.x + pos.y*WIDTH] - atten_grad_y[pos.x + (pos.y-1)*WIDTH]);
+		}
+	}	
+}
+
 
 float3 RGBtoXYZ(float3 rgb) {
 	float3 xyz;
@@ -81,4 +225,15 @@ float3 RGBtoXYZ(float3 rgb) {
 	xyz.y = rgb.x*0.2126 + rgb.y*0.7152 + rgb.z*0.0722;
 	xyz.z = rgb.x*0.0193 + rgb.y*0.1192 + rgb.z*0.9505;
 	return xyz;
+}
+
+float GL_to_CL(uint val) {
+	/*if (val >= 14340) return round(0.1245790*val - 1658.44);	//>=128
+	if (val >= 13316) return round(0.0622869*val - 765.408);	//>=64
+	if (val >= 12292) return round(0.0311424*val - 350.800);	//>=32
+	if (val >= 11268) return round(0.0155702*val - 159.443);	//>=16
+
+	float v = (float) val;
+	return round(0.0000000000000125922*pow(v,4.f) - 0.00000000026729*pow(v,3.f) + 0.00000198135*pow(v,2.f) - 0.00496681*v - 0.0000808829);*/
+	return (float)val;
 }

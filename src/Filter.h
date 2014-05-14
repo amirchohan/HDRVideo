@@ -71,9 +71,9 @@ public:
 	virtual const char* getName() const;
 
 	virtual bool setupOpenCL(cl_context_properties context_prop[], const Params& params) = 0;
-	virtual double runCLKernels() = 0;
-	virtual bool runOpenCL(int input_texid, int output_texid) = 0;
-	virtual bool runOpenCL(Image input, Image output) = 0;
+	virtual double runCLKernels(bool recomputeMapping) = 0;
+	virtual bool runOpenCL(int input_texid, int output_texid, bool recomputeMapping=true) = 0;
+	virtual bool runOpenCL(Image input, Image output, bool recomputeMapping=true) = 0;
 	virtual bool cleanupOpenCL() = 0;
 	virtual bool runReference(Image input, Image output) = 0;
 	virtual Image runFilter(Image input, Params params, unsigned int method);

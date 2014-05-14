@@ -46,7 +46,7 @@ bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Para
 	kernels["computeLogAvgLum"] = clCreateKernel(m_program, "computeLogAvgLum", &err);
 	CHECK_ERROR_OCL(err, "creating computeLogAvgLum kernel", return false);
 
-	//this kernel computes log average luminance of the image
+	//this kernel computes all the mipmap levels of the luminance
 	kernels["channel_mipmap"] = clCreateKernel(m_program, "channel_mipmap", &err);
 	CHECK_ERROR_OCL(err, "creating channel_mipmap kernel", return false);
 
@@ -54,16 +54,21 @@ bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Para
 	kernels["finalReduc"] = clCreateKernel(m_program, "finalReduc", &err);
 	CHECK_ERROR_OCL(err, "creating finalReduc kernel", return false);
 
-	//performs the reinhard global tone mapping operator
+	//computes the operation to be applied to each pixel
 	kernels["reinhardLocal"] = clCreateKernel(m_program, "reinhardLocal", &err);
 	CHECK_ERROR_OCL(err, "creating reinhardLocal kernel", return false);
 
+	//performs the actual tonemapping using the Ld_array computed in the previous function
+	kernels["tonemap"] = clCreateKernel(m_program, "tonemap", &err);
+	CHECK_ERROR_OCL(err, "creating tonemap kernel", return false);
 
 	/////////////////////////////////////////////////////////////////kernel sizes
 
 	kernel2DSizes("computeLogAvgLum");
 	kernel2DSizes("channel_mipmap");
 	kernel2DSizes("reinhardLocal");
+	kernel2DSizes("tonemap");
+
 
 	reportStatus("---------------------------------Kernel finalReduc:");
 
@@ -84,9 +89,9 @@ bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Para
 	/////////////////////////////////////////////////////////////////allocating memory
 
 	//initialising information regarding all mipmap levels
-	m_width = (int*) calloc(8, sizeof(int));
-	m_height = (int*) calloc(8, sizeof(int));
-	m_offset = (int*) calloc(8, sizeof(int));
+	m_width = (int*) calloc(num_mipmaps, sizeof(int));
+	m_height = (int*) calloc(num_mipmaps, sizeof(int));
+	m_offset = (int*) calloc(num_mipmaps, sizeof(int));
 
 	m_offset[0] = 0;
 	m_width[0]  = image_width;
@@ -112,6 +117,9 @@ bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Para
 
 	mems["logAvgLum"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*num_wg, NULL, &err);
 	CHECK_ERROR_OCL(err, "creating logAvgLum memory", return false);
+
+	mems["Ld_array"] = clCreateBuffer(m_clContext, CL_MEM_READ_WRITE, sizeof(float)*image_width*image_height, NULL, &err);
+	CHECK_ERROR_OCL(err, "creating Ld_array memory", return false);
 
 	if (params.opengl) {
 		mem_images[0] = clCreateFromGLTexture2D(m_clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, in_tex, &err);
@@ -146,73 +154,82 @@ bool ReinhardLocal::setupOpenCL(cl_context_properties context_prop[], const Para
 	err  = clSetKernelArg(kernels["finalReduc"], 1, sizeof(unsigned int), &num_wg);
 	CHECK_ERROR_OCL(err, "setting finalReduc arguments", return false);
 
-	err  = clSetKernelArg(kernels["reinhardLocal"], 0, sizeof(cl_mem), &mem_images[0]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 1, sizeof(cl_mem), &mem_images[1]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 2, sizeof(cl_mem), &mems["logLum_Mips"]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 3, sizeof(cl_mem), &mems["m_width"]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 4, sizeof(cl_mem), &mems["m_height"]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 5, sizeof(cl_mem), &mems["m_offset"]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 6, sizeof(cl_mem), &mems["logAvgLum"]);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 7, sizeof(float), &key);
-	err  = clSetKernelArg(kernels["reinhardLocal"], 8, sizeof(float), &sat);
-	CHECK_ERROR_OCL(err, "setting globalTMO arguments", return false);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 0, sizeof(cl_mem), &mems["Ld_array"]);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 1, sizeof(cl_mem), &mems["logLum_Mips"]);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 2, sizeof(cl_mem), &mems["m_width"]);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 3, sizeof(cl_mem), &mems["m_height"]);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 4, sizeof(cl_mem), &mems["m_offset"]);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 5, sizeof(cl_mem), &mems["logAvgLum"]);
+	err  = clSetKernelArg(kernels["reinhardLocal"], 6, sizeof(float), &key);
+	CHECK_ERROR_OCL(err, "setting reinhardLocal arguments", return false);
 
+	err  = clSetKernelArg(kernels["tonemap"], 0, sizeof(cl_mem), &mem_images[0]);
+	err  = clSetKernelArg(kernels["tonemap"], 1, sizeof(cl_mem), &mem_images[1]);
+	err  = clSetKernelArg(kernels["tonemap"], 2, sizeof(cl_mem), &mems["Ld_array"]);
+	err  = clSetKernelArg(kernels["tonemap"], 3, sizeof(float), &sat);
+	CHECK_ERROR_OCL(err, "setting tonemap arguments", return false);
 
 	reportStatus("\n\n");
 
 	return true;
 }
 
-double ReinhardLocal::runCLKernels() {
+double ReinhardLocal::runCLKernels(bool recomputeMapping) {
 	double start = omp_get_wtime();
 
 	cl_int err;
-	err = clEnqueueNDRangeKernel(m_queue, kernels["computeLogAvgLum"], 2, NULL, global_sizes["computeLogAvgLum"], local_sizes["computeLogAvgLum"], 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "enqueuing computeLogAvgLum kernel", return false);
-
-	err = clEnqueueNDRangeKernel(m_queue, kernels["finalReduc"], 1, NULL, &global_sizes["finalReduc"][0], &local_sizes["finalReduc"][0], 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "enqueuing finalReduc kernel", return false);
-
-	//creating mipmaps
-	for (int level=1; level<num_mipmaps; level++) {
-		err  = clSetKernelArg(kernels["channel_mipmap"], 1, sizeof(int), &m_width[level-1]);
-		err  = clSetKernelArg(kernels["channel_mipmap"], 2, sizeof(int), &m_offset[level-1]);
-		err  = clSetKernelArg(kernels["channel_mipmap"], 3, sizeof(int), &m_width[level]);
-		err  = clSetKernelArg(kernels["channel_mipmap"], 4, sizeof(int), &m_height[level]);
-		err  = clSetKernelArg(kernels["channel_mipmap"], 5, sizeof(int), &m_offset[level]);
-		CHECK_ERROR_OCL(err, "setting channel_mipmap arguments", return false);
-
-		err = clEnqueueNDRangeKernel(m_queue, kernels["channel_mipmap"], 2, NULL, global_sizes["channel_mipmap"], local_sizes["channel_mipmap"], 0, NULL, NULL);
-		CHECK_ERROR_OCL(err, "enqueuing channel_mipmap kernel", return false);
+	if (recomputeMapping) {
+		err = clEnqueueNDRangeKernel(m_queue, kernels["computeLogAvgLum"], 2, NULL, global_sizes["computeLogAvgLum"], local_sizes["computeLogAvgLum"], 0, NULL, NULL);
+		CHECK_ERROR_OCL(err, "enqueuing computeLogAvgLum kernel", return false);
+	
+		err = clEnqueueNDRangeKernel(m_queue, kernels["finalReduc"], 1, NULL, &global_sizes["finalReduc"][0], &local_sizes["finalReduc"][0], 0, NULL, NULL);
+		CHECK_ERROR_OCL(err, "enqueuing finalReduc kernel", return false);
+	
+		//creating mipmaps
+		for (int level=1; level<num_mipmaps; level++) {
+			err  = clSetKernelArg(kernels["channel_mipmap"], 1, sizeof(int), &m_width[level-1]);
+			err  = clSetKernelArg(kernels["channel_mipmap"], 2, sizeof(int), &m_offset[level-1]);
+			err  = clSetKernelArg(kernels["channel_mipmap"], 3, sizeof(int), &m_width[level]);
+			err  = clSetKernelArg(kernels["channel_mipmap"], 4, sizeof(int), &m_height[level]);
+			err  = clSetKernelArg(kernels["channel_mipmap"], 5, sizeof(int), &m_offset[level]);
+			CHECK_ERROR_OCL(err, "setting channel_mipmap arguments", return false);
+	
+			err = clEnqueueNDRangeKernel(m_queue, kernels["channel_mipmap"], 2, NULL, global_sizes["channel_mipmap"], local_sizes["channel_mipmap"], 0, NULL, NULL);
+			CHECK_ERROR_OCL(err, "enqueuing channel_mipmap kernel", return false);
+		}
+	
+		err = clEnqueueNDRangeKernel(m_queue, kernels["reinhardLocal"], 2, NULL, global_sizes["reinhardLocal"], local_sizes["reinhardLocal"], 0, NULL, NULL);
+		CHECK_ERROR_OCL(err, "enqueuing reinhardLocal kernel", return false);
 	}
 
-	err = clEnqueueNDRangeKernel(m_queue, kernels["reinhardLocal"], 2, NULL, global_sizes["reinhardLocal"], local_sizes["reinhardLocal"], 0, NULL, NULL);
-	CHECK_ERROR_OCL(err, "enqueuing transfer_data kernel", return false);
+	err = clEnqueueNDRangeKernel(m_queue, kernels["tonemap"], 2, NULL, global_sizes["tonemap"], local_sizes["tonemap"], 0, NULL, NULL);
+	CHECK_ERROR_OCL(err, "enqueuing tonemap kernel", return false);
 
 	err = clFinish(m_queue);
+
 	CHECK_ERROR_OCL(err, "running kernels", return false);
 	return omp_get_wtime() - start;	
 }
 
 
-bool ReinhardLocal::runOpenCL(int input_texid, int output_texid) {
+bool ReinhardLocal::runOpenCL(int input_texid, int output_texid, bool recomputeMapping) {
 	cl_int err;
 
 	err = clEnqueueAcquireGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "acquiring GL objects", return false);
 
-	double runTime = runCLKernels();
+	double runTime = runCLKernels(recomputeMapping);
 
 	err = clEnqueueReleaseGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "releasing GL objects", return false);
 
 	reportStatus("Finished OpenCL kernels in %lf ms", runTime*1000);
 
-	return false;
+	return true;
 }
 
 //when image data is provided in form of Image data structure as opposed to an OpenGL texture
-bool ReinhardLocal::runOpenCL(Image input, Image output) {
+bool ReinhardLocal::runOpenCL(Image input, Image output, bool recomputeMapping) {
 
 	cl_int err;
 
@@ -222,7 +239,7 @@ bool ReinhardLocal::runOpenCL(Image input, Image output) {
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
 	//let it begin
-	double runTime = runCLKernels();
+	double runTime = runCLKernels(recomputeMapping);
 
 	//read results back
 	err = clEnqueueReadImage(m_queue, mem_images[1], CL_TRUE, origin, region, sizeof(uchar)*input.width*NUM_CHANNELS, 0, output.data, 0, NULL, NULL);
@@ -242,6 +259,7 @@ bool ReinhardLocal::runOpenCL(Image input, Image output) {
 bool ReinhardLocal::cleanupOpenCL() {
 	clReleaseMemObject(mem_images[0]);
 	clReleaseMemObject(mem_images[1]);
+	clReleaseMemObject(mems["Ld_array"]);
 	clReleaseMemObject(mems["logLum_Mips"]);
 	clReleaseMemObject(mems["m_width"]);
 	clReleaseMemObject(mems["m_height"]);
@@ -251,6 +269,7 @@ bool ReinhardLocal::cleanupOpenCL() {
 	clReleaseKernel(kernels["channel_mipmap"]);
 	clReleaseKernel(kernels["finalReduc"]);
 	clReleaseKernel(kernels["reinhardLocal"]);
+	clReleaseKernel(kernels["tonemap"]);
 	releaseCL();
 	return true;
 }

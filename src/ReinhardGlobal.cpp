@@ -127,7 +127,7 @@ bool ReinhardGlobal::setupOpenCL(cl_context_properties context_prop[], const Par
 	return true;
 }
 
-double ReinhardGlobal::runCLKernels() {
+double ReinhardGlobal::runCLKernels(bool recomputeMapping) {
 	double start = omp_get_wtime();
 
 	cl_int err;
@@ -146,13 +146,13 @@ double ReinhardGlobal::runCLKernels() {
 }
 
 
-bool ReinhardGlobal::runOpenCL(int input_texid, int output_texid) {
+bool ReinhardGlobal::runOpenCL(int input_texid, int output_texid, bool recomputeMapping) {
 	cl_int err;
 
 	err = clEnqueueAcquireGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "acquiring GL objects", return false);
 
-	double runTime = runCLKernels();
+	double runTime = runCLKernels(recomputeMapping);
 
 	err = clEnqueueReleaseGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "releasing GL objects", return false);
@@ -163,7 +163,7 @@ bool ReinhardGlobal::runOpenCL(int input_texid, int output_texid) {
 }
 
 //when image data is provided in form of Image data structure as opposed to an OpenGL texture
-bool ReinhardGlobal::runOpenCL(Image input, Image output) {
+bool ReinhardGlobal::runOpenCL(Image input, Image output, bool recomputeMapping) {
 
 	cl_int err;
 
@@ -173,7 +173,7 @@ bool ReinhardGlobal::runOpenCL(Image input, Image output) {
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
 	//let it begin
-	double runTime = runCLKernels();
+	double runTime = runCLKernels(recomputeMapping);
 
 	//read results back
 	err = clEnqueueReadImage(m_queue, mem_images[1], CL_TRUE, origin, region, sizeof(uchar)*input.width*NUM_CHANNELS, 0, output.data, 0, NULL, NULL);

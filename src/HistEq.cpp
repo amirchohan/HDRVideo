@@ -177,7 +177,7 @@ bool HistEq::setupOpenCL(cl_context_properties context_prop[], const Params& par
 	return true;
 }
 
-double HistEq::runCLKernels() {
+double HistEq::runCLKernels(bool recomputeMapping) {
 	cl_int err;
 	//let it begin
 	double start = omp_get_wtime();
@@ -203,13 +203,13 @@ double HistEq::runCLKernels() {
 	return omp_get_wtime() - start;
 }
 
-bool HistEq::runOpenCL(int input_texid, int output_texid) {
+bool HistEq::runOpenCL(int input_texid, int output_texid, bool recomputeMapping) {
 	cl_int err;
 
 	err = clEnqueueAcquireGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "acquiring GL objects", return false);
 
-	double runTime = runCLKernels();
+	double runTime = runCLKernels(recomputeMapping);
 
 	err = clEnqueueReleaseGLObjects(m_queue, 2, &mem_images[0], 0, 0, 0);
 	CHECK_ERROR_OCL(err, "releasing GL objects", return false);
@@ -219,7 +219,7 @@ bool HistEq::runOpenCL(int input_texid, int output_texid) {
 	return false;
 }
 
-bool HistEq::runOpenCL(Image input, Image output) {
+bool HistEq::runOpenCL(Image input, Image output, bool recomputeMapping) {
 	cl_int err;
 
  	const size_t origin[] = {0, 0, 0};
@@ -227,7 +227,7 @@ bool HistEq::runOpenCL(Image input, Image output) {
 	err = clEnqueueWriteImage(m_queue, mem_images[0], CL_TRUE, origin, region, sizeof(uchar)*input.width*NUM_CHANNELS, 0, input.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "writing image memory", return false);
 
-	double runTime = runCLKernels();
+	double runTime = runCLKernels(recomputeMapping);
 
 	err = clEnqueueReadImage(m_queue, mem_images[1], CL_TRUE, origin, region, sizeof(uchar)*input.width*NUM_CHANNELS, 0, output.data, 0, NULL, NULL);
 	CHECK_ERROR_OCL(err, "reading image memory", return false);
